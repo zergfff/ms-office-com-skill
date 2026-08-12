@@ -1,0 +1,165 @@
+---
+name: ms-office-com-skill
+description: "Use when editing MS Office files (Word/Excel/PowerPoint .docx/.xlsx/.pptx) on Windows via the COM interface (win32com.client). Covers full-document reads, find/replace, styles/outline, table surgery, cell math, slide/shape edits, and the real pitfalls (infinite loops, stale processes, long-string Find errors, merged cells, image-container paragraphs)."
+version: 1.0.0
+author: zergfff
+license: MIT
+platforms: [windows]
+metadata:
+  tags: [Word, Excel, PowerPoint, COM, win32com, Office, docx, xlsx, pptx, editing]
+---
+
+# MS Office COM Automation (Word / Excel / PowerPoint)
+
+On Windows, drive MS Office applications directly through their COM object model with
+`win32com.client` (pywin32). This is the **only** path that preserves complex structure —
+merged tables, styles, outline levels, headers/footers, fields, shapes — that pure-library
+approaches (python-docx / openpyxl / python-pptx) flatten or lose.
+
+Do NOT use python-docx / openpyxl / python-pptx unless the user explicitly names them.
+If COM fails, report the native Windows error — do not silently fall back.
+
+## When to Use
+
+- Read, edit, audit, or mass-edit an existing `.docx` / `.xlsx` / `.pptx` / legacy `.doc` / `.xls` / `.ppt`.
+- Fix formatting, numbering, styles, outline levels, tables, budgets, or cross-document consistency.
+- Generate a new document with exact structure (tables, headings, merged cells, images).
+
+## Golden Rules (each cost real time)
+
+1. **Backup before every edit round** — `cp file.docx file_bak.docx` in the same folder. Restoration is the only reliable undo after corruption.
+2. **Never run a Find.Execute replace-loop whose replacement text CONTAINS the search text.** The loop re-matches its own output → infinite duplication (one incident inserted 2,282 copies of a TOC block). Use paragraph-level iteration when `new` contains `old`.
+3. **After any COM timeout/crash, kill the Office process before reopening.** A stale WINWORD.EXE / EXCEL.EXE / POWERPNT.EXE keeps the corrupted doc in memory; the next `Documents.Open` reuses that instance and `Save()` writes the corruption to disk. Kill with `cmd //c "taskkill /F /IM WINWORD.EXE"` (from git-bash) or `taskkill //F //IM WINWORD.EXE`.
+4. **Verify by re-reading, never trust "saved ok".** Reopen read-only, count key phrases (`t.count('x')`), check char/table counts vs. baseline, confirm headings appear exactly once.
+5. Set `DisplayAlerts = 0`, always `Close(False)` + `Quit()` in a finally-style flow.
+
+## Core Patterns
+
+### Word
+
+```python
+import win32com.client
+w = win32com.client.Dispatch('Word.Application'); w.Visible = False; w.DisplayAlerts = 0
+d = w.Documents.Open(path, ReadOnly=True, AddToRecentFiles=False)   # ReadOnly=True to inspect
+text = d.Content.Text                    # full text incl. tables (\x07 cell marks)
+# write full text to a cache .txt for big docs; terminal output truncates ~72K chars
+d.Close(False); w.Quit()
+```
+
+Edit: `ReadOnly=False`, work, then `d.Save(); d.Close(False); w.Quit()`.
+
+### Excel
+
+```python
+import win32com.client
+x = win32com.client.Dispatch('Excel.Application'); x.Visible = False; x.DisplayAlerts = 0
+wb = x.Workbooks.Open(path)              # or x.Workbooks.Add() for new
+ws = wb.Worksheets(1)                    # or ws = wb.Worksheets('Sheet1')
+ws.Cells(r, c).Value = 'text' / 123 / 0.5
+ws.Range('A1:B10').Value = [[..], [..]]  # 2D array write is fastest
+wb.Save(); wb.Close(False); x.Quit()
+```
+
+### PowerPoint
+
+```python
+import win32com.client
+p = win32com.client.Dispatch('PowerPoint.Application')   # Visible may need True for some ops
+prs = p.Presentations.Open(path)
+for slide in prs.Slides:
+    for shp in slide.Shapes:
+        if shp.HasTextFrame: print(shp.TextFrame.TextRange.Text)
+prs.Save(); prs.Close(); p.Quit()
+```
+
+## Find & Replace (Word) — the danger zone
+
+- `rng.Find.Execute(old)` errors with **"字符串参量过长" (string parameter too long)** on search strings over ~255 chars. Match a short unique prefix instead.
+- **Safe paragraph-level replacement (also safe when new contains old):**
+
+```python
+for para in d.Paragraphs:
+    s = para.Range.Text
+    if s.startswith(old):
+        para.Range.Text = new + s[len(old):]
+        break
+```
+
+- Deleting a paragraph: `para.Range.Delete()` (removes the ¶ mark too). **Do NOT cache `list(d.Paragraphs)` and mutate by index — COM ranges go stale after deletion.** Re-scan the live collection per delete, or anchor by text.
+- Find loops are fine only when `new` does NOT contain `old`:
+  `rng = d.Content; rng.Find.Execute(old); rng.Text = new; rng.Collapse(0); rng = d.Range(rng.Start, d.Content.End)`
+
+## Styles & Outline (Word)
+
+- `para.OutlineLevel`: 1–9 = heading levels, **10 = body text**.
+- Builtin style constants: **-1 = wdStyleNormal (正文), -2 = wdStyleHeading1, -3 = wdStyleHeading2, -4 = wdStyleHeading3**. Setting -2 gives Heading1, not Heading2 — classic off-by-one.
+- Fix body text wrongly tagged as heading: `para.Style = -1` (resets OutlineLevel to 10). Verify with `para.Style.NameLocal`.
+
+## Tables (Word)
+
+- Access any cell flat: `t.Range.Cells(i).Range.Text = 'x\r'` — works on merged tables where `t.Rows(r).Cells` raises.
+- **Add a column:** `t.Columns.Add(t.Columns(1))` then fill `t.Cell(r, 1).Range.Text` per row (header first). Verify `t.Columns.Count` went up.
+- **Delete a trailing column ONLY if every cell is empty:** inspect all `t.Columns(c).Cells`; headers/merged cells count as content.
+- **Append a table at end:** collapse range to end, `d.Tables.Add(r, rows, cols)`, `t.Borders.Enable = True`, fill `t.Cell(i,j).Range.Text`.
+- Insert a heading before a position: `r = d.Range(pos, pos); r.InsertBefore(text + '\r')`, then set style on the inserted range.
+
+## Cells & Formats (Excel)
+
+- `ws.Cells(r, c).Value` read/write; batch with `ws.Range('A1:C5').Value = [[...]]`.
+- Merge: `ws.Range('A1:C1').Merge()`; unmerge: `.UnMerge()`.
+- Formulas: `ws.Cells(r, c).Formula = '=SUM(A1:A10)'`.
+- Format: `ws.Range('A1').Font.Bold = True`; number format `ws.Cells(r,c).NumberFormat = '0.00'`; column width `ws.Columns(1).ColumnWidth = 20`.
+- Row/col insert: `ws.Rows(5).Insert()` / `ws.Columns(2).Insert()`; delete likewise.
+- Save format constants when SaveAs: xlsx = 51, xlsm = 52, csv = 6, xls = 56.
+
+## Slides & Shapes (PowerPoint)
+
+- `prs.Slides.Add(index, layout)` — layout constants: 1 = title, 2 = title+text, 12 = blank.
+- Add textbox: `slide.Shapes.AddTextbox(1, left, top, w, h).TextFrame.TextRange.Text = '...'`
+- Font: `...TextRange.Font.Size/Bold/Color.RGB`.
+- Add table: `shp = slide.Shapes.AddTable(rows, cols, l, t, w, h)`; cell text via `shp.Table.Cell(r, c).Shape.TextFrame.TextRange.Text`.
+- Add picture: `slide.Shapes.AddPicture(path, False, True, l, t, w, h)`.
+- Save format: pptx = 24, ppt = 1.
+
+## Image-Container Paragraphs (Word) — data-loss incident
+
+In converted/OCR'd docs, paragraphs whose text is just `/` are often **image containers** — the InlineShape is anchored inside them. `para.Range.Delete()` deletes paragraph + image.
+
+**Rules:** before deleting any paragraph, check `len(para.Range.InlineShapes) == 0`. Snapshot `d.InlineShapes.Count` before edits and verify it never dropped afterward. Insert images via Range, not `Selection.TypeParagraph()/TypeText()` (leaves stray `/` chars).
+
+```python
+for para in list(d.Paragraphs):
+    s = para.Range.Text.replace('\r','').replace('\x07','').strip()
+    if s == '/' and len(para.Range.InlineShapes) == 0:
+        para.Range.Delete()
+```
+
+## Document Health Check (run after every significant edit)
+
+```python
+d = w.Documents.Open(path, ReadOnly=True, AddToRecentFiles=False)
+t = d.Content.Text
+print(len(t), d.Paragraphs.Count, d.Tables.Count)      # compare vs pre-edit baseline
+for k in ['<known-pattern>']:
+    print(k, t.count(k))                                # expect 1, not 2282
+```
+
+For Excel: re-open and verify cell values / sheet count / merged ranges. For PPT: verify slide count and shape counts.
+
+## Budget / Data-Cascade Edits
+
+When a quantity changes (e.g. 6 sets → 4 sets), recompute and update EVERY linked number: subtotals, grand total, funding split, annual split, per-appendix tables, remarks text, %-based figures. Verify at the end: `a+b==total`, funding rows sum to total, annual rows sum to total, line items sum to subtotal.
+
+## Verification Checklist
+
+1. Reopen read-only; char/sheet/slide counts sane (not 3× inflated).
+2. `t.count('关键旧短语') == 0` and `t.count('关键新短语') >= 1` for each edit.
+3. Appendix headings appear exactly once; TOC entries match body titles.
+4. Budget sums reconcile.
+5. No leftover heading-styled body lines (`OutlineLevel != 10` review).
+6. No process left running — `tasklist | findstr /i "WINWORD EXCEL POWERPNT"` clean.
+
+## References
+
+- `references/win32com-cheatsheet.md` — full verified snippets: safe bulk replace, style constants table, table column add/delete, merged-cell reads, image insert/resize, Excel cell/format batch ops, PPT slide/shape/table ops.
+- `references/pitfalls.md` — incident transcripts: infinite TOC duplication, stale-process corruption, long-string Find error, stale paragraph lists, image-container paragraph loss, style off-by-one.
