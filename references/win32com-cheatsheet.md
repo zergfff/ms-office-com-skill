@@ -236,22 +236,26 @@ t.Rows.Alignment = 1                              # wdRowAlignCenter
 
 ## Word — 表格内文字格式 (默认规则)
 
-**规则：表格里文字默认上下居中 + 左右居中 + 无缩进 + 单倍行距；表头加粗 + 重复标题行（跨页重复）。** 实测 Office 2024：
+**规则：表格里文字默认上下居中 + 左右居中 + 无缩进 + 单倍行距 + 段前段后0磅；取消"对齐到网格"和"自动调整右缩进"；表头加粗 + 重复标题行（跨页重复）。** 实测 Office 2024：
 
 ```python
 for i in range(1, t.Rows.Count + 1):
     for j in range(1, t.Columns.Count + 1):
         c = t.Cell(i, j)
-        c.Range.ParagraphFormat.Alignment = 1         # 左右居中
+        pf = c.Range.ParagraphFormat
+        pf.Alignment = 1                              # 左右居中
         c.VerticalAlignment = 1                        # 上下居中（注意：居中=1，不是2！）
-        c.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
-        c.Range.ParagraphFormat.FirstLineIndent = 0    # 无缩进
-        c.Range.ParagraphFormat.LineSpacingRule = 0    # 单倍行距
+        pf.CharacterUnitFirstLineIndent = 0
+        pf.FirstLineIndent = 0                         # 无缩进
+        pf.LineSpacingRule = 0                         # 单倍行距
+        pf.SpaceBefore = 0; pf.SpaceAfter = 0          # 段前段后 0 磅
+        pf.DisableLineHeightGrid = True                # 取消"如果自定义了文档网格，则对齐到网格"
+        pf.AutoAdjustRightIndent = False               # 取消"如果自定义了文档网格，则自动调整右缩进"
 
 t.Rows(1).Range.Font.Bold = True                       # 表头加粗
 t.Rows(1).HeadingFormat = True                         # 跨页重复标题行
 ```
-垂直对齐：0=上, **1=居中**, 3=下。多行表头则 Rows(1)+Rows(2) 都设 HeadingFormat=True。长文本列可单独改 Alignment=0 左对齐。
+垂直对齐：0=上, **1=居中**, 3=下。网格两复选框默认勾选（DisableLineHeightGrid=0 / AutoAdjustRightIndent=-1），必须显式取消。多行表头则 Rows(1)+Rows(2) 都设 HeadingFormat=True。长文本列可单独改 Alignment=0 左对齐。
 
 ## Word — 缺字自动替换 (生僻字回退)
 
@@ -263,6 +267,21 @@ w.SubstituteFont('仿宋_GB2312', '仿宋')     # 参数顺序 = (不可用字�
 w.SubstituteFont('楷体_GB2312', '楷体')
 ```
 注意：`Document.FontSubstitutions` 集合在 win32com 下访问常报错，用 SubstituteFont 方法代替。生僻字检测可用 fontTools 查字体 cmap。
+
+## Word — 生僻字缺字形自动换覆盖字体 (大薸"薸"事故)
+
+**事故：生成"大屯海水生态现场调研与检测方案.docx"时，"薸"字被 Word 用微软雅黑渲染，而非仿宋。** 根因：仿宋_GB2312/楷体_GB2312 是 GB2312 字符集（6763 汉字），缺"薸溇垚犇"等生僻字；Word 缺字形回退到系统 UI 字体（微软雅黑）。
+
+**实测字形覆盖（fontTools, 2026-08 本机）：** 仿宋_GB2312 / 楷体_GB2312 / 方正小标宋简体 都缺 `薸 溇 垚 犇`；普通 **FangSong (simfang.ttf) / 华文仿宋 (STFANGSO.TTF) 全覆盖**。
+
+```python
+# 修复：段落含缺字 → 整段 NameFarEast 换成覆盖字体
+for para in d.Paragraphs:
+    txt = para.Range.Text.replace('\r', '').replace('\x07', '')
+    if missing_chars(txt, '仿宋_GB2312'):     # 见 SKILL.md Font coverage 的 missing_chars
+        para.Range.Font.NameFarEast = '仿宋'  # 普通仿宋全覆盖 GBK
+```
+**最佳实践：正文直接指定"仿宋"（FangSong）而非"仿宋_GB2312"**，除非单位模板明确要求 GB2312 版。若必须用 GB2312 版，生成后跑缺字检查换 run 字体。
 
 ## Word — 字体自动安装 (scripts/ensure_fonts.py, GitHub 源快速失败)
 
@@ -279,15 +298,16 @@ FONT_DL_CONNECT_TIMEOUT=10 FONT_DL_TOTAL_TIMEOUT=30 python scripts/ensure_fonts.
 
 ## Word — 表格自动调整 (AI 表格超页边距修复)
 
-**规则：AI 生成的表格常超出页边距，修复顺序 = 表格布局 → 根据窗口自动调整 → 根据内容自动调整。**
+**规则：AI 生成的表格常超出页边距，三连修复 = 窗口→内容→窗口。** 实测 Office 2024：
 
 ```python
 t.AllowAutoFit = True
-t.AutoFitBehavior(1)          # wdAutoFitWindow 根据窗口自动调整（首选）
-# t.AutoFitBehavior(2)        # wdAutoFitContent 根据内容自动调整
+t.AutoFitBehavior(1)          # wdAutoFitWindow 根据窗口自动调整
+t.AutoFitBehavior(2)          # wdAutoFitContent 根据内容自动调整
+t.AutoFitBehavior(1)          # wdAutoFitWindow 再根据窗口自动调整（定型）
 # t.AutoFitBehavior(0)        # wdAutoFitFixed 固定列宽
 ```
-实测 Office 2024：`AutoFitBehavior(1)` → PreferredWidthType=1（百分比），`AutoFitBehavior(2)` → PreferredWidthType=2, PreferredWidth=100。**新表生成后默认调用一次 AutoFitBehavior(1)。**
+实测：单次窗口自适应有时列宽不合理；**窗口→内容→窗口三连后** PreferredWidthType=1（百分比，整表占页面），效果最稳定。**新表生成后默认执行三连。**
 
 ## Word — 页脚页码 (默认规则)
 

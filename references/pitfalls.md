@@ -135,6 +135,24 @@ LLMs generate, which then lands in Word via COM):
 - **B2 兼容模式 + 修订跟踪 = 保存崩溃**（Microsoft Q&A）— 开启兼容模式时带修订保存会报"文件错误"。规避：操作前检查 `d.CompatibilityMode`；如 >15（Word 2013+ 兼容模式）且要保留修订，先 `d.SaveAs2(path, 16)` 提升格式再改。修复损坏文档：新建文档→关修订→全选复制→贴入→重新打开修订→另存新名。
 - **B3 多级列表编号"千古难题"**（Reddit/La Trobe guide）— AI 生成的多级标题没绑定到样式/多级列表，编号不连续、重启乱序。COM 侧：多级标题用 `para.Style`（Heading1/2/3）驱动编号，不要手打"1.1"数字；验证时扫描段落前缀看编号是否连续（与公文"编号无缺口"规则一致）。
 
+## Incident 12: 生僻字缺字形被 Word 回退成微软雅黑 (大屯海"薸"事故, 2026-08-13)
+
+生成"大屯海水生态现场调研与检测方案.docx"时，"大薸"的"薸"字没按仿宋_GB2312 渲染，而是微软雅黑。
+
+根因：**仿宋_GB2312 / 楷体_GB2312 是 GB2312 字符集（6763 汉字），缺"薸溇垚犇"等生僻字**。Word 缺字形时回退到系统 UI 字体（微软雅黑），不是相似字体。`SubstituteFont` 只能映射"字体不存在"，管不了"字形缺失"。
+
+修复（见 SKILL.md「Font coverage」）：fontTools 检查 cmap → 缺字段落 NameFarEast 换"仿宋"（FangSong 全覆盖 GBK）。**生成时直接指定"仿宋"而非"仿宋_GB2312"可根治**。
+
+## Incident 13: 表格默认段落属性未设置 (大屯海, 2026-08-13)
+
+生成表格时未显式设置：段前段后 0 磅、取消"对齐到网格"（DisableLineHeightGrid=True）、取消"自动调整右缩进"（AutoAdjustRightIndent=False）。文档开"文档网格"排版时表格行距异常。
+
+修复（见 SKILL.md「Table cell defaults」）：遍历单元格设 `SpaceBefore=0; SpaceAfter=0; DisableLineHeightGrid=True; AutoAdjustRightIndent=False`。实测默认值 DisableLineHeightGrid=0、AutoAdjustRightIndent=-1（即默认勾选），必须显式覆盖。
+
+## Incident 14: 表格自适应单次不够，需三连 (大屯海, 2026-08-13)
+
+单次 `AutoFitBehavior(1)`（窗口自适应）后列宽有时不合理。用户确认标准流程：**窗口→内容→窗口三连**（AutoFitBehavior(1)→(2)→(1)），三连后 PreferredWidthType=1（百分比整表占页面），效果最稳定。见 SKILL.md「Table auto-fit」。
+
 ## User conventions for Chinese government proposal documents (公文)
 
 - **No source citations.** Reports written in a bureau's name must NOT carry "来源于官方网站/数据来源/网络检索" annotations or URLs — state facts directly. Remove `（…数据来源：…）` parentheticals entirely.
