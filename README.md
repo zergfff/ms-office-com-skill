@@ -2,6 +2,10 @@
 
 Agent skill for **MS Office COM automation on Windows** — Word / Excel / PowerPoint via `win32com.client` (pywin32).
 
+> ⚠️ **SCOPE: 本 skill 仅适用于 Windows + Microsoft Office + COM (win32com.client)。**
+> ❌ 不适用于 Linux/macOS、WPS Office、python-docx/openpyxl/python-pptx 纯库路线、Microsoft Graph 云端 API。
+> 其他组合请勿使用本 skill。
+
 Designed for AI agents that edit real Office documents: Hermes, Claude Code, Codex, OpenClaw, Cursor, etc.
 
 ## Why COM?
@@ -13,9 +17,9 @@ built for that path.
 
 ## Contents
 
-- `SKILL.md` — the skill itself (golden rules, Word/Excel/PPT core patterns, find/replace danger zone, styles & outline, table surgery, cells & formats, slides & shapes, health checks, budget cascades)
+- `SKILL.md` — the skill itself (golden rules, Word/Excel/PPT core patterns, find/replace danger zone, styles & outline, fonts & substitution, alignment & table cell defaults, GB/T 7714 references, superscript/subscript semantics, table surgery, cells & formats, slides & shapes, dialog-hang prevention, dispatch selection, health checks, budget cascades)
 - `references/win32com-cheatsheet.md` — verified working snippets for Word/Excel/PowerPoint
-- `references/pitfalls.md` — real incident transcripts (infinite TOC duplication, stale-process corruption, long-string Find error, image-container paragraph loss, style off-by-one)
+- `references/pitfalls.md` — real incident transcripts (infinite TOC duplication, stale-process corruption, long-string Find error, image-container paragraph loss, style off-by-one, LLM-generation pitfalls A1-A10, file-corruption pitfalls B1-B3)
 
 ## Install
 

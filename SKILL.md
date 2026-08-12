@@ -1,15 +1,26 @@
 ---
 name: ms-office-com-skill
-description: "Use when editing MS Office files (Word/Excel/PowerPoint .docx/.xlsx/.pptx) on Windows via the COM interface (win32com.client). Covers full-document reads, find/replace, styles/outline, table surgery, cell math, slide/shape edits, and the real pitfalls (infinite loops, stale processes, long-string Find errors, merged cells, image-container paragraphs)."
-version: 1.0.0
+description: "Use when editing MS Office files (Word/Excel/PowerPoint .docx/.xlsx/.pptx) on Windows via the COM interface (win32com.client). ONLY valid for Windows + MS Office COM combinations — NOT for Linux/macOS, WPS, or pure-library (python-docx/openpyxl/python-pptx) approaches. Covers full-document reads, find/replace, styles/outline, fonts, table surgery, superscript/subscript, references, cell math, slide/shape edits, and the real pitfalls (dialog hangs, infinite loops, stale processes, long-string Find errors, merged cells, image-container paragraphs)."
+version: 1.1.0
 author: zergfff
 license: MIT
 platforms: [windows]
 metadata:
-  tags: [Word, Excel, PowerPoint, COM, win32com, Office, docx, xlsx, pptx, editing]
+  tags: [Word, Excel, PowerPoint, COM, win32com, Office, docx, xlsx, pptx, editing, windows-only]
 ---
 
 # MS Office COM Automation (Word / Excel / PowerPoint)
+
+## ⚠️ SCOPE — 本技能仅适用于 Windows + MS Office COM
+
+**本技能只适用于以下组合：Windows 操作系统 + Microsoft Office（Word/Excel/PowerPoint）+ `win32com.client` COM 接口。其他任何组合一律不得使用本技能：**
+
+- ❌ **Linux / macOS** — COM 是 Windows 专属，本技能所有代码在这些平台不可用。
+- ❌ **WPS Office** — ProgID 不同（`Kwps.Application` 等），对象模型行为有差异，本技能不覆盖；WPS 报错见 pitfalls。
+- ❌ **python-docx / openpyxl / python-pptx 等纯库** — 本技能是 COM 路线；除非用户明确点名用这些库，否则禁止使用它们替代 COM。
+- ❌ **Microsoft Graph / Office 365 云端 API** — 那是不同的接口体系（OAuth + Graph），与本技能无关。
+
+**适用判断：** 用户在 Windows 上要求操作本地 Office 文件（.docx/.xlsx/.pptx 或旧版 .doc/.xls/.ppt），且机器装有 MS Office → 用本技能。其他情况 → 告知用户本技能不适用，不硬套。
 
 On Windows, drive MS Office applications directly through their COM object model with
 `win32com.client` (pywin32). This is the **only** path that preserves complex structure —
@@ -45,7 +56,7 @@ If COM fails, report the native Windows error — do not silently fall back.
 
 ```python
 import win32com.client
-w = win32com.client.Dispatch('Word.Application'); w.Visible = False; w.DisplayAlerts = 0
+w = win32com.client.DispatchEx('Word.Application'); w.Visible = False; w.DisplayAlerts = 0
 d = w.Documents.Open(path, ReadOnly=True, AddToRecentFiles=False)   # ReadOnly=True to inspect
 text = d.Content.Text                    # full text incl. tables (\x07 cell marks)
 # write full text to a cache .txt for big docs; terminal output truncates ~72K chars
@@ -53,6 +64,8 @@ d.Close(False); w.Quit()
 ```
 
 Edit: `ReadOnly=False`, work, then `d.Save(); d.Close(False); w.Quit()`.
+
+> **一致性说明：** 全 skill 统一用 `DispatchEx`（独立进程，防弹窗卡死、防误连已开实例）。只有明确要复用已打开实例的场景才用 `Dispatch`；复杂脚本用 `gencache.EnsureDispatch`。三者的详细区别见「Dispatch vs DispatchEx vs EnsureDispatch」章节。
 
 ### Word — export to PDF (公文交付)
 
@@ -113,7 +126,7 @@ Remember: `d.Content.Text` includes revision marks (`InsertedText`/`DeletedText`
 
 ```python
 import win32com.client
-x = win32com.client.Dispatch('Excel.Application'); x.Visible = False; x.DisplayAlerts = 0
+x = win32com.client.DispatchEx('Excel.Application'); x.Visible = False; x.DisplayAlerts = 0
 wb = x.Workbooks.Open(path)              # or x.Workbooks.Add() for new
 ws = wb.Worksheets(1)                    # or ws = wb.Worksheets('Sheet1')
 ws.Cells(r, c).Value = 'text' / 123 / 0.5
@@ -125,7 +138,7 @@ wb.Save(); wb.Close(False); x.Quit()
 
 ```python
 import win32com.client
-p = win32com.client.Dispatch('PowerPoint.Application')   # Visible may need True for some ops
+p = win32com.client.DispatchEx('PowerPoint.Application')   # Visible may need True for some ops
 prs = p.Presentations.Open(path)
 for slide in prs.Slides:
     for shp in slide.Shapes:
@@ -169,6 +182,7 @@ rng.Font.NameFarEast = '仿宋_GB2312'     # 中文/东亚字体
 ```
 
 - 只设 `Font.Name` → 中文不变（仍继承原字体或默认）；只设 `NameFarEast` → 西文/数字不变。**两个都要设。**
+- **例外：页脚/页眉 Range 上不要设 `NameFarEast`**（实测报 OLE error 0x800a16d4）——页码是数字，`Font.Name` 足够（见「Page numbers」章节）。正文、表格、普通文本一律双属性。
 - 对一段文字设置字体前先选中整个 Range：`para.Range.Font.Name = ...` 而不是 `para.Font`。
 - 表格单元格同理：`t.Cell(r, c).Range.Font.Name = 'Times New Roman'; t.Cell(r, c).Range.Font.NameFarEast = '仿宋_GB2312'`。
 - 新建文档时，用 `d.Content.Font` 设文档默认字体；或直接改 Normal 样式：`d.Styles(-1).Font.NameFarEast = '仿宋_GB2312'`。
@@ -504,7 +518,7 @@ When you don't know the exact property/method names of a COM object (the "复杂
 
 ```python
 import win32com.client
-x = win32com.client.Dispatch('Excel.Application')
+x = win32com.client.DispatchEx('Excel.Application')   # 只读探索，独立进程
 props = getattr(x, '_prop_map_get_', {})
 print('PROPERTIES:', sorted(props.keys()))
 print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method' in str(type(getattr(x, m, None))).lower()]))

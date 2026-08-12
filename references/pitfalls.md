@@ -117,6 +117,29 @@ finally: pythoncom.CoUninitialize()
 `ws.Range('B2:D4').Value` on a merged range returns only the top-left cell's value.
 Walk the span with `rng.Cells(r, c)` / `rng.Offset(r, c)`; when writing, set the top-left cell only.
 
+## LLM-generation pitfalls (A类: Claude DOCX Skill 15 Critical Rules 提炼, 生成类)
+
+These are the "LLM tries to write a docx and gets it subtly wrong" class — the official
+Claude DOCX Skill's 15 Critical Rules, distilled for the COM workflow (they apply to content
+LLMs generate, which then lands in Word via COM):
+
+- **A1 `\n` 换行无效** — LLM 常写 `"第一行\n第二行"` 想换行；Word 里 `\n` 不产生段落，必须新建 Paragraph（COM：`d.Content.InsertAfter('\r' + text)` 或逐段 `Range.InsertBefore`）。
+- **A2 页面尺寸默认错** — 生成文档默认 A4 是常态，但 LLM 常按 US Letter 想象。公文必须显式确认页面尺寸：`d.PageSetup.PaperSize = 7`（wdPaperA4），`d.PageSetup.Orientation = 0`（纵向）。
+- **A3 TOC 无法索引标题** — 标题样式缺 `outlineLevel` → 目录抓不到。COM 对应：标题段落必须 `para.OutlineLevel` 为 1-9 且 `para.Style` 是 Heading 系列（见 Styles & Outline）。
+- **A4 表格"双宽度"要求** — 表格总宽必须等于各列宽之和。COM 生成表后调用 `AutoFitBehavior(1)`（见 Table auto-fit）强制收进页面；或显式 `t.Columns(j).Width` 设置匹配列宽。
+- **A5 底纹类型用错 → 纯黑背景** — ShadingType.SOLID 会变纯黑，必须用 CLEAR。COM 对应：单元格底纹 `t.Cell(r,c).Shading.BackgroundPatternColor = 0xD9D9D9`（浅灰），不要用 0（黑）。
+- **A6 列表用手打符号** — LLM 直接插 `•`/`①` 模拟列表 → 后续无法自动重排编号。COM：公文场景列表少；若需列表用 `ListFormat.ApplyListTemplate` 或手动编号，且保持编号无缺口（见公文约定）。
+- **A7 横版传竖版尺寸** — 设横向页面时若传了横向尺寸，库内部会再交换一次又变回竖版。COM 不涉及 docx-js 交换，但设横向时仍要显式：`d.PageSetup.Orientation = 1`（横向）+ 手动交换 PageSetup.PageWidth/PageHeight。
+- **A8 删除段落留空段落** — 修订模式下删除段落要连段落标记一起删，否则留空段。COM 对应：`para.Range.Delete()`（含 ¶ 标记），不要只删文字。
+- **A9 修订标记用错元素** — 删除文本必须用 `w:delText` 而非 `w:t`。COM 侧：用 `TrackRevisions` 模式操作即可，不要手工改 XML。
+- **A10 特殊字符/引号** — 智能引号、中文引号在 XML 需实体。COM 侧：直接 `Range.Text = '中文"引号"'` 即可，COM 自动处理实体，无需手工转义。
+
+## File-corruption pitfalls (B类: 文档损坏类, 社区/GitHub 高频)
+
+- **B1 python-docx 生成的文件 MS Office 报损坏**（python-docx #446）— Google Docs/LibreOffice 打开正常但 MS Office 报"检测到损坏"。COM 路线天然规避（Word 自己写出的文件不会打包错），但若用户给的是第三方库生成的文件：打开后先 `d.SaveAs(path, 16)`（wdFormatXMLDocument）重存一遍，让 Word 修复打包。
+- **B2 兼容模式 + 修订跟踪 = 保存崩溃**（Microsoft Q&A）— 开启兼容模式时带修订保存会报"文件错误"。规避：操作前检查 `d.CompatibilityMode`；如 >15（Word 2013+ 兼容模式）且要保留修订，先 `d.SaveAs2(path, 16)` 提升格式再改。修复损坏文档：新建文档→关修订→全选复制→贴入→重新打开修订→另存新名。
+- **B3 多级列表编号"千古难题"**（Reddit/La Trobe guide）— AI 生成的多级标题没绑定到样式/多级列表，编号不连续、重启乱序。COM 侧：多级标题用 `para.Style`（Heading1/2/3）驱动编号，不要手打"1.1"数字；验证时扫描段落前缀看编号是否连续（与公文"编号无缺口"规则一致）。
+
 ## User conventions for Chinese government proposal documents (公文)
 
 - **No source citations.** Reports written in a bureau's name must NOT carry "来源于官方网站/数据来源/网络检索" annotations or URLs — state facts directly. Remove `（…数据来源：…）` parentheticals entirely.

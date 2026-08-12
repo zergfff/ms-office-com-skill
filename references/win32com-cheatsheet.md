@@ -139,7 +139,7 @@ Save to a cache .txt and read it with read_file for full-document analysis; grep
 
 ```python
 import win32com.client
-x = win32com.client.Dispatch('Excel.Application'); x.Visible = False; x.DisplayAlerts = 0
+x = win32com.client.DispatchEx('Excel.Application'); x.Visible = False; x.DisplayAlerts = 0   # DispatchEx 独立进程，退出干净
 wb = x.Workbooks.Open(r'C:\path\book.xlsx')
 ws = wb.Worksheets(1)                      # or wb.Worksheets('预算表')
 
@@ -182,7 +182,7 @@ SaveAs format constants: xlsx=51, xlsm=52, csv=6, xls=56. Use `wb.SaveAs(path, F
 
 ```python
 import win32com.client
-p = win32com.client.Dispatch('PowerPoint.Application')
+p = win32com.client.DispatchEx('PowerPoint.Application')   # DispatchEx 独立进程
 p.Visible = True                            # PPT needs Visible=True for most ops
 prs = p.Presentations.Open(r'C:\path\deck.pptx')
 
@@ -291,7 +291,7 @@ slide.SlideShowTransition.Duration = 1.0
 
 ```python
 import win32com.client
-x = win32com.client.Dispatch('Excel.Application')
+x = win32com.client.Dispatch('Excel.Application')   # 只读探索，Dispatch 即可
 props = getattr(x, '_prop_map_get_', {})
 print('PROPERTIES:', sorted(props.keys()))
 print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method' in str(type(getattr(x, m, None))).lower()]))
