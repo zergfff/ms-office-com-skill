@@ -250,8 +250,10 @@ for para in d.Paragraphs:
 **关键结论（实测 2026-08, 本机）：**
 - 仿宋_GB2312 / 楷体_GB2312 / 方正小标宋简体 缺字形：`薸 溇 垚 犇`（GB2312 字符集限制）。
 - 普通 **FangSong (simfang.ttf) / 华文仿宋 (STFANGSO.TTF) 全覆盖**这些字。
-- **生成时最佳实践：正文直接指定"仿宋"（FangSong）而非"仿宋_GB2312"**——除非用户明确要求 GB2312 版；表头/标题同样优先用覆盖全的字体。
+- **⚠️ 不能通过 FontLink 注册表让 Word 回退到相似字体**：实测给仿宋_GB2312 添加 `HKLM\...\FontLink\SystemLink` 链接到 FangSong 后，导出 PDF 中"薸"字仍使用 MicrosoftYaHei 子集——现代 Word（DirectWrite 渲染）不走 FontLink 回退链。**唯一可靠方案 = 文档内直接使用覆盖字体。**
+- **生成时最佳实践：正文直接指定"仿宋"（FangSong）而非"仿宋_GB2312"**——除非用户明确要求 GB2312 版；表头/标题同样优先用覆盖全的字体。实测"仿宋"导出 PDF 只内嵌 FangSong + Times New Roman，无微软雅黑。
 - 若必须用 GB2312 版字体（如单位模板要求），则生成后跑一遍缺字检查并换 run 字体。
+- **验证方法**：导出 PDF 后用 pymupdf/fitz `page.get_fonts()` 检查内嵌字体，确认没有 MicrosoftYaHei 子集。
 
 ## Font auto-install — 缺失公文字体自动下载安装 (scripts/ensure_fonts.py)
 

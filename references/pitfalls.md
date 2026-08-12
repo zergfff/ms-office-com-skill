@@ -143,6 +143,8 @@ LLMs generate, which then lands in Word via COM):
 
 修复（见 SKILL.md「Font coverage」）：fontTools 检查 cmap → 缺字段落 NameFarEast 换"仿宋"（FangSong 全覆盖 GBK）。**生成时直接指定"仿宋"而非"仿宋_GB2312"可根治**。
 
+**补充实测（2026-08-13）：尝试过 FontLink 注册表方案（给仿宋_GB2312 添加 SystemLink → FangSong），导出 PDF 后"薸"字仍用 MicrosoftYaHei 子集——现代 Word 的 DirectWrite 渲染不走 FontLink 回退链，此方案无效。唯一可靠方案 = 文档内直接使用覆盖字体（"仿宋"/FangSong），用 pymupdf `page.get_fonts()` 验证 PDF 无 MicrosoftYaHei。**
+
 ## Incident 13: 表格默认段落属性未设置 (大屯海, 2026-08-13)
 
 生成表格时未显式设置：段前段后 0 磅、取消"对齐到网格"（DisableLineHeightGrid=True）、取消"自动调整右缩进"（AutoAdjustRightIndent=False）。文档开"文档网格"排版时表格行距异常。

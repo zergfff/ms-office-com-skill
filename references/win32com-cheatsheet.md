@@ -274,6 +274,8 @@ w.SubstituteFont('楷体_GB2312', '楷体')
 
 **实测字形覆盖（fontTools, 2026-08 本机）：** 仿宋_GB2312 / 楷体_GB2312 / 方正小标宋简体 都缺 `薸 溇 垚 犇`；普通 **FangSong (simfang.ttf) / 华文仿宋 (STFANGSO.TTF) 全覆盖**。
 
+**⚠️ FontLink 注册表方案无效（实测）**：给仿宋_GB2312 添加 `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\FontLink\SystemLink` 链接到 FangSong 后，导出 PDF 中"薸"字仍使用 MicrosoftYaHei 子集——现代 Word（DirectWrite 渲染）不走 FontLink 回退链。**唯一可靠方案 = 文档内直接使用覆盖字体**；验证 = 导出 PDF 后 pymupdf `page.get_fonts()` 确认无 MicrosoftYaHei。
+
 ```python
 # 修复：段落含缺字 → 整段 NameFarEast 换成覆盖字体
 for para in d.Paragraphs:
