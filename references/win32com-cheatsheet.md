@@ -298,6 +298,26 @@ print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method
 # Word: 先数再动 —— d.Sections.Count, d.Sections(1).Headers.Count, d.Tables.Count, d.Shapes.Count
 ```
 
+## Word — 字体设置 (中英文分开，COM 经典坑)
+
+**规则：未指定字体时，默认中文字体 = 仿宋_GB2312，默认西文字体 = Times New Roman**（GB/T 9704-2012 公文规范）。
+
+```python
+# 两个属性必须同时设，否则漏掉一半
+rng.Font.Name = 'Times New Roman'        # 西文/数字
+rng.Font.NameFarEast = '仿宋_GB2312'     # 中文/东亚
+
+# 表格单元格同理
+cell.Range.Font.Name = 'Times New Roman'
+cell.Range.Font.NameFarEast = '仿宋_GB2312'
+
+# 文档级默认：改 Normal 样式 (wdStyleNormal = -1)
+d.Styles(-1).Font.NameFarEast = '仿宋_GB2312'
+d.Styles(-1).Font.Name = 'Times New Roman'
+```
+
+GB/T 9704-2012 速查：标题 方正小标宋简体 2号居中；一级标题 黑体 3号；二级标题 楷体_GB2312 3号；正文 仿宋_GB2312 3号两端对齐首行缩进2字符行距28磅；表头 黑体小四加粗浅灰底纹跨页重复；表内容 仿宋_GB2312 小四。
+
 ## Common cleanup (git-bash)
 
 ```bash

@@ -54,7 +54,7 @@ Copy the folder into the agent's skills directory.
 
 | Tool | Capabilities |
 |---|---|
-| **Word** | full read (incl. tables), safe find/replace (paragraph-level, self-match-safe), styles & outline levels, table surgery (add/delete columns, merged-cell-safe reads, append tables), image insert/guard, **export PDF**, **TOC refresh + field update**, **per-section headers/footers**, **comments (批注) read/write**, **track changes accept/reject** |
+| **Word** | full read (incl. tables), safe find/replace (paragraph-level, self-match-safe), styles & outline levels, **font rules (中文字体 仿宋_GB2312 + 西文字体 Times New Roman via Name/NameFarEast, GB/T 9704-2012 公文格式速查)**, table surgery (add/delete columns, merged-cell-safe reads, append tables), image insert/guard, **export PDF**, **TOC refresh + field update**, **per-section headers/footers**, **comments (批注) read/write**, **track changes accept/reject** |
 | **Excel** | cell/range read/write (batch), formulas, merge, formatting, row/col insert/delete, **PivotTable**, **charts**, **conditional formatting**, **data validation**, **freeze panes**, **autofilter**, **named ranges**, **sheet→PDF export**, SaveAs format constants |
 | **PowerPoint** | slide read/add, textboxes, tables, pictures, **export slides to PNG (visual verification)**, **speaker notes**, **template/theme apply**, **slide master**, **transitions**, SaveAs format constants |
 | **通用** | crash recovery (taskkill), post-edit health checks, budget cascade verification, **COM object discovery (runtime property/method enumeration)**, Chinese 公文 formatting conventions |

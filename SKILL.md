@@ -156,6 +156,37 @@ for para in d.Paragraphs:
 - Builtin style constants: **-1 = wdStyleNormal (正文), -2 = wdStyleHeading1, -3 = wdStyleHeading2, -4 = wdStyleHeading3**. Setting -2 gives Heading1, not Heading2 — classic off-by-one.
 - Fix body text wrongly tagged as heading: `para.Style = -1` (resets OutlineLevel to 10). Verify with `para.Style.NameLocal`.
 
+## Fonts — 中文字体 vs 西文字体 (critical COM split)
+
+**Rule: 生成 Word 时若未指定字体，默认中文字体 = 仿宋_GB2312，默认西文字体 = Times New Roman**（公文规范，GB/T 9704-2012）。
+
+COM 里中英文字体是**两个独立属性**，只设一个会漏掉另一半：
+
+```python
+# 同时设置西文 + 中文，缺一不可
+rng.Font.Name = 'Times New Roman'        # 西文/数字字体
+rng.Font.NameFarEast = '仿宋_GB2312'     # 中文/东亚字体
+```
+
+- 只设 `Font.Name` → 中文不变（仍继承原字体或默认）；只设 `NameFarEast` → 西文/数字不变。**两个都要设。**
+- 对一段文字设置字体前先选中整个 Range：`para.Range.Font.Name = ...` 而不是 `para.Font`。
+- 表格单元格同理：`t.Cell(r, c).Range.Font.Name = 'Times New Roman'; t.Cell(r, c).Range.Font.NameFarEast = '仿宋_GB2312'`。
+- 新建文档时，用 `d.Content.Font` 设文档默认字体；或直接改 Normal 样式：`d.Styles(-1).Font.NameFarEast = '仿宋_GB2312'`。
+- 常见坑：从模板继承的字体与期望不一致 → 打开后先 `d.Content.Font.Reset()`（若允许）或逐段覆盖。
+
+## GB/T 9704-2012 公文格式速查 (Chinese government documents)
+
+| 元素 | 字体 | 字号/其他 |
+|---|---|---|
+| 标题 | 方正小标宋简体 | 2号，居中 |
+| 一级标题 | 黑体 | 3号 |
+| 二级标题 | 楷体_GB2312 | 3号 |
+| 正文 | 仿宋_GB2312 | 3号，两端对齐，首行缩进2字符，行距28磅 |
+| 表格表头 | 黑体 | 小四加粗，浅灰底纹，跨页重复表头 |
+| 表格内容 | 仿宋_GB2312 | 小四，按内容居左/居右/居中 |
+
+每处设置字体时都按上面的 Name + NameFarEast 双属性写，避免中文回退到宋体/等线。
+
 ## Tables (Word)
 
 - Access any cell flat: `t.Range.Cells(i).Range.Text = 'x\r'` — works on merged tables where `t.Rows(r).Cells` raises.
