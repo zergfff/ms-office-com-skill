@@ -227,6 +227,7 @@ para.LeftIndent = 0; para.RightIndent = 0           # 清左右缩进
 shp.Range.ParagraphFormat.Alignment = 1             # wdAlignParagraphCenter
 shp.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
 shp.Range.ParagraphFormat.LeftIndent = 0
+shp.Range.ParagraphFormat.LineSpacingRule = 0       # 图片段默认单倍行距
 
 # 表格：整表在页面居中（行对齐），单元格内再按内容对齐
 t.Rows.Alignment = 1                                # wdRowAlignCenter（表格整体居中）
@@ -237,6 +238,31 @@ t.Rows.Alignment = 1                                # wdRowAlignCenter（表格�
 - 标题/表题/图题清缩进时**同时清字符缩进和磅值缩进**（`CharacterUnitFirstLineIndent=0` + `FirstLineIndent=0`），否则旧文档残留磅值缩进会盖住居中效果。
 - 图片插入后，它所在段落默认可能带缩进或左对齐 → 显式设 `Alignment = 1` + 清缩进。
 - 表格默认靠左 → `t.Rows.Alignment = 1` 整体居中；表格内单元格对齐用 `t.Cell(r,c).VerticalAlignment`（1=上, 2=中, 3=下）和 `Range.ParagraphFormat.Alignment`（0/1/2/3）。
+
+### Table cell defaults — 表格内文字格式 (默认规则)
+
+**Rule: 表格里文字默认上下居中 + 左右居中 + 无缩进 + 单倍行距；表头加粗 + 重复标题行（跨页重复）。** 全部实测 Office 2024 可用：
+
+```python
+# 遍历所有单元格：上下居中 + 左右居中 + 无缩进 + 单倍行距
+for i in range(1, t.Rows.Count + 1):
+    for j in range(1, t.Columns.Count + 1):
+        c = t.Cell(i, j)
+        c.Range.ParagraphFormat.Alignment = 1              # 左右居中
+        c.VerticalAlignment = 1                            # 上下居中 (wdCellAlignVerticalCenter)
+        c.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
+        c.Range.ParagraphFormat.FirstLineIndent = 0        # 无缩进
+        c.Range.ParagraphFormat.LineSpacingRule = 0        # 单倍行距 (wdLineSpaceSingle)
+
+# 表头：加粗 + 重复标题行（跨页自动重复表头）
+t.Rows(1).Range.Font.Bold = True
+t.Rows(1).HeadingFormat = True                            # 跨页重复标题行（实测返回 -1）
+```
+
+- 垂直对齐常量：**1 = 居中**（wdCellAlignVerticalCenter），0=上，3=下——注意居中不是 2！
+- `HeadingFormat = True` 使表头行在表格跨页时自动重复（等于 表格工具→布局→重复标题行）。
+- 若表头不止一行，重复标题行要设 `t.Rows(1)` 和 `t.Rows(2)` 一起 `HeadingFormat = True`。
+- 若个别列需要左对齐（如长文本描述列），再单独覆盖 `t.Cell(r,c).Range.ParagraphFormat.Alignment = 0`。
 
 ## Tables (Word)
 

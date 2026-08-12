@@ -335,10 +335,11 @@ para.CharacterUnitFirstLineIndent = 0
 para.FirstLineIndent = 0
 para.LeftIndent = 0; para.RightIndent = 0
 
-# 图片：段落居中、无缩进
+# 图片：段落居中、无缩进、单倍行距
 shp.Range.ParagraphFormat.Alignment = 1           # wdAlignParagraphCenter
 shp.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
 shp.Range.ParagraphFormat.LeftIndent = 0
+shp.Range.ParagraphFormat.LineSpacingRule = 0     # 单倍行距
 
 # 表格：整表居中
 t.Rows.Alignment = 1                              # wdRowAlignCenter
@@ -346,6 +347,25 @@ t.Rows.Alignment = 1                              # wdRowAlignCenter
 ```
 
 对齐常量：0=左, 1=中, 2=右, 3=两端, 4=分散。**缩进用 `CharacterUnitFirstLineIndent`（字符单位），不要用 `FirstLineIndent`（磅值，随字号漂移）。** 标题类段落（文章大标题/表题"表4-1 …"/图题"图1 …"）判定为居中类，正文判定为两端对齐+缩进类，批量排版逐段分类处理。
+
+## Word — 表格内文字格式 (默认规则)
+
+**规则：表格里文字默认上下居中 + 左右居中 + 无缩进 + 单倍行距；表头加粗 + 重复标题行（跨页重复）。** 实测 Office 2024：
+
+```python
+for i in range(1, t.Rows.Count + 1):
+    for j in range(1, t.Columns.Count + 1):
+        c = t.Cell(i, j)
+        c.Range.ParagraphFormat.Alignment = 1         # 左右居中
+        c.VerticalAlignment = 1                        # 上下居中（注意：居中=1，不是2！）
+        c.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
+        c.Range.ParagraphFormat.FirstLineIndent = 0    # 无缩进
+        c.Range.ParagraphFormat.LineSpacingRule = 0    # 单倍行距
+
+t.Rows(1).Range.Font.Bold = True                       # 表头加粗
+t.Rows(1).HeadingFormat = True                         # 跨页重复标题行
+```
+垂直对齐：0=上, **1=居中**, 3=下。多行表头则 Rows(1)+Rows(2) 都设 HeadingFormat=True。长文本列可单独改 Alignment=0 左对齐。
 
 ## Word — 缺字自动替换 (生僻字回退)
 
