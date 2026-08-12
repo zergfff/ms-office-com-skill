@@ -206,6 +206,7 @@ w.SubstituteFont('楷体_GB2312', '楷体')
 ## Paragraph / Image / Table alignment (排版默认规则)
 
 **Rule: 正文默认两端对齐 + 首行缩进2字符；图片和表格默认居中（无缩进）。**
+**Rule 2: 确认是文章标题 / 表标题（表题）/ 图题（图题）的段落，默认居中且不缩进2字符。**
 
 Word 对齐常量：0=左对齐, 1=居中, 2=右对齐, 3=两端对齐(Justify), 4=分散对齐。
 
@@ -216,6 +217,12 @@ para.CharacterUnitFirstLineIndent = 2               # 首行缩进2字符（不�
 para.LineSpacingRule = 4                            # wdLineSpaceExactly 精确行距
 para.LineSpacing = 28                               # 28磅（配合 3号仿宋）
 
+# 标题 / 表题 / 图题：居中 + 无缩进
+para.Alignment = 1                                  # wdAlignParagraphCenter
+para.CharacterUnitFirstLineIndent = 0               # 清字符缩进
+para.FirstLineIndent = 0                            # 清磅值缩进
+para.LeftIndent = 0; para.RightIndent = 0           # 清左右缩进
+
 # 图片：所在段落居中，无缩进
 shp.Range.ParagraphFormat.Alignment = 1             # wdAlignParagraphCenter
 shp.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
@@ -225,10 +232,11 @@ shp.Range.ParagraphFormat.LeftIndent = 0
 t.Rows.Alignment = 1                                # wdRowAlignCenter（表格整体居中）
 ```
 
+- **标题类段落判定**：文章大标题（文档/章节标题）、表题（"表4-1 设备清单"）、图题（"图1 流程图"）→ 居中 + 清缩进；正文段落 → 两端对齐 + 缩进2字符。**批量排版时按此规则逐段分类处理。**
 - **首行缩进必须用 `CharacterUnitFirstLineIndent = 2`（按字符），不要用 `FirstLineIndent`（磅值）**——公文要求"2字符"，磅值会随字号漂移。
+- 标题/表题/图题清缩进时**同时清字符缩进和磅值缩进**（`CharacterUnitFirstLineIndent=0` + `FirstLineIndent=0`），否则旧文档残留磅值缩进会盖住居中效果。
 - 图片插入后，它所在段落默认可能带缩进或左对齐 → 显式设 `Alignment = 1` + 清缩进。
 - 表格默认靠左 → `t.Rows.Alignment = 1` 整体居中；表格内单元格对齐用 `t.Cell(r,c).VerticalAlignment`（1=上, 2=中, 3=下）和 `Range.ParagraphFormat.Alignment`（0/1/2/3）。
-- 表格标题段（表题）也居中：表题段落 `Alignment = 1`。
 
 ## Tables (Word)
 

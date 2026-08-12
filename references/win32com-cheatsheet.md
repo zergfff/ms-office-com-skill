@@ -321,12 +321,19 @@ GB/T 9704-2012 速查：标题 方正小标宋简体 2号居中；一级标题 �
 ## Word — 段落/图片/表格对齐 (排版默认规则)
 
 **规则：正文默认两端对齐 + 首行缩进2字符；图片和表格默认居中（无缩进）。**
+**规则2：确认是文章标题 / 表标题（表题）/ 图题（图题）的段落，默认居中且不缩进2字符。**
 
 ```python
 # 正文：两端对齐(3) + 首行缩进2字符（按字符单位！）
 para.Alignment = 3                                # wdAlignParagraphJustify
 para.CharacterUnitFirstLineIndent = 2             # 首行缩进2字符
 para.LineSpacingRule = 4; para.LineSpacing = 28   # 精确行距28磅
+
+# 标题 / 表题 / 图题：居中 + 无缩进（同时清字符缩进和磅值缩进）
+para.Alignment = 1                                # wdAlignParagraphCenter
+para.CharacterUnitFirstLineIndent = 0
+para.FirstLineIndent = 0
+para.LeftIndent = 0; para.RightIndent = 0
 
 # 图片：段落居中、无缩进
 shp.Range.ParagraphFormat.Alignment = 1           # wdAlignParagraphCenter
@@ -338,7 +345,7 @@ t.Rows.Alignment = 1                              # wdRowAlignCenter
 # 单元格垂直对齐：t.Cell(r,c).VerticalAlignment  (1=上 2=中 3=下)
 ```
 
-对齐常量：0=左, 1=中, 2=右, 3=两端, 4=分散。**缩进用 `CharacterUnitFirstLineIndent`（字符单位），不要用 `FirstLineIndent`（磅值，随字号漂移）。**
+对齐常量：0=左, 1=中, 2=右, 3=两端, 4=分散。**缩进用 `CharacterUnitFirstLineIndent`（字符单位），不要用 `FirstLineIndent`（磅值，随字号漂移）。** 标题类段落（文章大标题/表题"表4-1 …"/图题"图1 …"）判定为居中类，正文判定为两端对齐+缩进类，批量排版逐段分类处理。
 
 ## Word — 缺字自动替换 (生僻字回退)
 
