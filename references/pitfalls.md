@@ -85,6 +85,38 @@ Original 7028万 total → after -66万: 6962万. Every linked number updated: s
 
 **Lesson:** when a quantity changes, recompute and update EVERY linked number and verify sums at the end — never trust a single find/replace to catch the cascade.
 
+## Incident 8: gen_py cache corruption — EnsureDispatch fails (community, pywin32 #1923)
+
+Symptom: `gencache.EnsureDispatch('Excel.Application')` raises
+`AttributeError: module 'win32com.gen_py.00020813-...' has no attribute 'CLSIDToClassMap'`
+(or `TypeError: This COM object can not automate the makepy process` on 64-bit Office, #1568).
+
+Fix: **delete `%TEMP%\gen_py`** and retry — the cache is NOT rebuilt automatically when corrupted.
+Related: PyInstaller-frozen apps break win32com the same way (pyinstaller #6257/#7898) — pre-generate the cache or use `dynamic.Dispatch`.
+
+## Incident 9: Dispatch attached to the WRONG (already-running) instance
+
+`Dispatch('Word.Application')` reuses whatever instance is already running (Running Object Table).
+If a user has Word open interactively, your script silently drives THAT instance — documents opened in
+the script appear in their window, and `Quit()` closes their Word. Community-verified pattern:
+use `DispatchEx` for independent/batch work (fresh process, clean shutdown), keep `Dispatch` only for
+single-session interactive work when you KNOW no other instance is running.
+
+## Incident 10: Threads + win32com = random COM errors (community, 博客园)
+
+Per-thread COM without initialization fails sporadically. Pattern: one Application per process,
+separate Documents per thread, and in each thread:
+```python
+pythoncom.CoInitialize()
+try: ... work ...
+finally: pythoncom.CoUninitialize()
+```
+
+## Incident 11: Excel merged range reads return only top-left (community, CSDN)
+
+`ws.Range('B2:D4').Value` on a merged range returns only the top-left cell's value.
+Walk the span with `rng.Cells(r, c)` / `rng.Offset(r, c)`; when writing, set the top-left cell only.
+
 ## User conventions for Chinese government proposal documents (公文)
 
 - **No source citations.** Reports written in a bureau's name must NOT carry "来源于官方网站/数据来源/网络检索" annotations or URLs — state facts directly. Remove `（…数据来源：…）` parentheticals entirely.

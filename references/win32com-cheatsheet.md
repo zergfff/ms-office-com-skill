@@ -318,6 +318,39 @@ d.Styles(-1).Font.Name = 'Times New Roman'
 
 GB/T 9704-2012 速查：标题 方正小标宋简体 2号居中；一级标题 黑体 3号；二级标题 楷体_GB2312 3号；正文 仿宋_GB2312 3号两端对齐首行缩进2字符行距28磅；表头 黑体小四加粗浅灰底纹跨页重复；表内容 仿宋_GB2312 小四。
 
+## Word — 段落/图片/表格对齐 (排版默认规则)
+
+**规则：正文默认两端对齐 + 首行缩进2字符；图片和表格默认居中（无缩进）。**
+
+```python
+# 正文：两端对齐(3) + 首行缩进2字符（按字符单位！）
+para.Alignment = 3                                # wdAlignParagraphJustify
+para.CharacterUnitFirstLineIndent = 2             # 首行缩进2字符
+para.LineSpacingRule = 4; para.LineSpacing = 28   # 精确行距28磅
+
+# 图片：段落居中、无缩进
+shp.Range.ParagraphFormat.Alignment = 1           # wdAlignParagraphCenter
+shp.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
+shp.Range.ParagraphFormat.LeftIndent = 0
+
+# 表格：整表居中
+t.Rows.Alignment = 1                              # wdRowAlignCenter
+# 单元格垂直对齐：t.Cell(r,c).VerticalAlignment  (1=上 2=中 3=下)
+```
+
+对齐常量：0=左, 1=中, 2=右, 3=两端, 4=分散。**缩进用 `CharacterUnitFirstLineIndent`（字符单位），不要用 `FirstLineIndent`（磅值，随字号漂移）。**
+
+## Word — 缺字自动替换 (生僻字回退)
+
+**规则：字体中不存在的文字（缺字形）自动用相似字体替换显示。例："溇"在仿宋_GB2312 无字形 → 默认回退为仿宋显示/打印。** 只影响显示/PDF 观感，不修改文档内字体名。
+
+```python
+# 显式设置回退映射（等价 文件→选项→字体替换；实测 Office 2024 可用）
+w.SubstituteFont('仿宋_GB2312', '仿宋')     # 参数顺序 = (不可用字体, 替换字体)
+w.SubstituteFont('楷体_GB2312', '楷体')
+```
+注意：`Document.FontSubstitutions` 集合在 win32com 下访问常报错，用 SubstituteFont 方法代替。生僻字检测可用 fontTools 查字体 cmap。
+
 ## Common cleanup (git-bash)
 
 ```bash

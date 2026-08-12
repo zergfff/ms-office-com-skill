@@ -174,6 +174,22 @@ rng.Font.NameFarEast = '仿宋_GB2312'     # 中文/东亚字体
 - 新建文档时，用 `d.Content.Font` 设文档默认字体；或直接改 Normal 样式：`d.Styles(-1).Font.NameFarEast = '仿宋_GB2312'`。
 - 常见坑：从模板继承的字体与期望不一致 → 打开后先 `d.Content.Font.Reset()`（若允许）或逐段覆盖。
 
+## Font substitution — 缺字自动替换 (生僻字回退)
+
+**Rule: 当指定字体中不存在的文字（缺字形），Word 自动用相似字体替换显示。例如"溇"在仿宋_GB2312 中没有该字形，默认自动替换为仿宋显示/打印。** 这是显示/渲染层行为，文档内字体名不变。
+
+COM 里可用 `Application.SubstituteFont(UnavailableFont, SubstituteFont)` 显式设置"不可用字体 → 替换字体"映射（等价于 文件→选项→字体替换 对话框）：
+
+```python
+w.SubstituteFont('仿宋_GB2312', '仿宋')        # 缺字/缺字体时用仿宋回退（实测 Office 2024 可用）
+w.SubstituteFont('楷体_GB2312', '楷体')
+```
+
+- ✅ 实测：`Application.SubstituteFont` 在 Office 2024 (Word) 下正常；参数顺序 = (不可用字体, 替换字体)。
+- ❌ `Document.FontSubstitutions` 集合在 win32com 下访问常报错（`<unknown>.FontSubstitutions`）——不要依赖它，用 SubstituteFont 方法。
+- 这种替换只影响显示/打印/导出 PDF 的观感，**不修改文档中保存的字体名**；导 PDF 前若担心生僻字观感，先调用 SubstituteFont 设置好回退映射。
+- 生僻字检测：若需确认某字在某字体中是否有字形，可在脚本里用 PIL/fontTools 查字体 cmap，或直接接受 Word 的回退行为（公文常见做法）。
+
 ## GB/T 9704-2012 公文格式速查 (Chinese government documents)
 
 | 元素 | 字体 | 字号/其他 |
@@ -186,6 +202,33 @@ rng.Font.NameFarEast = '仿宋_GB2312'     # 中文/东亚字体
 | 表格内容 | 仿宋_GB2312 | 小四，按内容居左/居右/居中 |
 
 每处设置字体时都按上面的 Name + NameFarEast 双属性写，避免中文回退到宋体/等线。
+
+## Paragraph / Image / Table alignment (排版默认规则)
+
+**Rule: 正文默认两端对齐 + 首行缩进2字符；图片和表格默认居中（无缩进）。**
+
+Word 对齐常量：0=左对齐, 1=居中, 2=右对齐, 3=两端对齐(Justify), 4=分散对齐。
+
+```python
+# 正文：两端对齐 + 首行缩进2字符（按字符单位缩进，公文标准）
+para.Alignment = 3                                  # wdAlignParagraphJustify
+para.CharacterUnitFirstLineIndent = 2               # 首行缩进2字符（不是 FirstLineIndent 磅值！）
+para.LineSpacingRule = 4                            # wdLineSpaceExactly 精确行距
+para.LineSpacing = 28                               # 28磅（配合 3号仿宋）
+
+# 图片：所在段落居中，无缩进
+shp.Range.ParagraphFormat.Alignment = 1             # wdAlignParagraphCenter
+shp.Range.ParagraphFormat.CharacterUnitFirstLineIndent = 0
+shp.Range.ParagraphFormat.LeftIndent = 0
+
+# 表格：整表在页面居中（行对齐），单元格内再按内容对齐
+t.Rows.Alignment = 1                                # wdRowAlignCenter（表格整体居中）
+```
+
+- **首行缩进必须用 `CharacterUnitFirstLineIndent = 2`（按字符），不要用 `FirstLineIndent`（磅值）**——公文要求"2字符"，磅值会随字号漂移。
+- 图片插入后，它所在段落默认可能带缩进或左对齐 → 显式设 `Alignment = 1` + 清缩进。
+- 表格默认靠左 → `t.Rows.Alignment = 1` 整体居中；表格内单元格对齐用 `t.Cell(r,c).VerticalAlignment`（1=上, 2=中, 3=下）和 `Range.ParagraphFormat.Alignment`（0/1/2/3）。
+- 表格标题段（表题）也居中：表题段落 `Alignment = 1`。
 
 ## Tables (Word)
 
@@ -294,6 +337,57 @@ print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method
 ```
 
 For Word, walk the object model programmatically: `w.ActiveDocument.Sections.Count`, `d.Sections(1).Headers.Count`, `d.Tables.Count`, `d.Shapes.Count`, `d.StoryRanges.Count` — inspect counts before assuming structure.
+
+## Dispatch vs DispatchEx vs EnsureDispatch (choose the right one)
+
+The single most common source of "why is my script controlling someone else's Word/Excel?" confusion:
+
+| Call | Behavior | Use when |
+|---|---|---|
+| `win32com.client.Dispatch('Word.Application')` | Reuses an **already-running instance** (Running Object Table); starts one only if none exists | Interactive single-session work; safe when no other instance is open |
+| `win32com.client.DispatchEx('Word.Application')` | **Always spawns a fresh independent process** | Server/background/batch work; concurrent scripts; guaranteed clean shutdown (`Quit()` really exits, process doesn't linger) |
+| `gencache.EnsureDispatch('Word.Application')` | Early-bound static proxy; builds/uses `%TEMP%\gen_py` cache; typed properties, faster, stable constants | Complex scripts where you rely on typed members / want discovery via `_prop_map_get_` |
+
+**Pitfalls (community-verified):**
+- `gencache` cache corruption: `EnsureDispatch` raises `AttributeError: module 'win32com.gen_py...' has no attribute 'CLSIDToClassMap'` (pywin32 #1923). Fix: **delete `%TEMP%\gen_py`** and retry — it does NOT rebuild a corrupted cache automatically.
+- 64-bit Office + `EnsureDispatch` can fail with `TypeError: This COM object can not automate the makepy process` (pywin32 #1568) when the type library doesn't register cleanly. Run `makepy` manually or clear the cache.
+- `DispatchEx` does not see documents opened in a pre-existing interactive Office instance; `Dispatch` may attach to one unexpectedly. Pick deliberately per script.
+- Excel lingers after `Quit()` when launched via `Dispatch` — prefer `DispatchEx` for guaranteed cleanup, or `taskkill /F /IM EXCEL.EXE` after.
+
+## Multi-threaded COM (threading)
+
+win32com + threads is flaky; community pattern (博客园-verified):
+
+- One `Application` object per process; open/close **separate Documents per thread**.
+- In each worker thread, call `pythoncom.CoInitialize()` before touching COM and `pythoncom.CoUninitialize()` after closing the doc. Without this, random COM errors in threads are near-certain.
+
+```python
+import pythoncom, win32com.client
+
+def worker(path):
+    pythoncom.CoInitialize()
+    try:
+        w = win32com.client.DispatchEx('Word.Application')   # fresh instance per worker
+        w.Visible = False; w.DisplayAlerts = 0
+        d = w.Documents.Open(path, ReadOnly=True)
+        # ... work ...
+        d.Close(False); w.Quit()
+    finally:
+        pythoncom.CoUninitialize()
+```
+
+## Excel merged-cell reads (merged ranges)
+
+On a merged range, `Range.Address` / `.Value` returns **only the top-left cell**. To get every covered row/column, walk with `Offset`:
+
+```python
+rng = ws.Range('B2:D4')
+for r in range(rng.Rows.Count):
+    for c in range(rng.Columns.Count):
+        cell = rng.Cells(r + 1, c + 1)      # or rng.Offset(r, c)
+        print(cell.Value)
+```
+Rule of thumb: never assume a merged range's `.Value` fills every cell — set the top-left cell only, and read via the full range object when you need the merged span.
 
 ## Image-Container Paragraphs (Word) — data-loss incident
 
