@@ -443,6 +443,44 @@ for i in range(1, w.ProtectedViewWindows.Count + 1):
 # 5) 复杂脚本套线程超时兜底：threading.Thread + join(timeout) + taskkill /F /IM WINWORD.EXE
 ```
 
+## Word — 参考文献 (GB/T 7714-2015 顺序编码制)
+
+**规则：参考文献按 GB/T 7714-2015 顺序编码制，正文引用上标 [1][2]，文末按出现顺序编号。**
+
+类型标识：期刊[J] 专著[M] 学位论文[D] 会议[C] 报告[R] 标准[S] 专利[P] 网页[EB/OL] 报纸[N] 其他[Z]
+
+```
+期刊：[1] 张三, 李四, 王五, 等. 题名[J]. 刊名, 2021, 33(2): 12-16.
+专著：[2] 作者. 书名[M]. 2版. 出版地: 出版者, 2020: 45-50.
+标准：[3] 起草单位. 标准名称: GB 3838-2002[S]. 出版地: 出版者, 2002.
+网页：[4] 作者. 题名[EB/OL]. (2023-05-10)[2026-08-12]. https://xxx.gov.cn/xxx.html.
+```
+作者 >3 人：前3人+，等 / et al。正文引用：`[1]` 上标，合并 `[1-3]`。
+
+## Word — 上下角标语义判定 (单位/化学式/离子)
+
+**规则：先判断文字意思再决定上下标，不机械处理。** 实测 Office 2024：
+
+```python
+def apply_script(doc, needle, rel_start, rel_end, kind):
+    f = doc.Content.Find; f.ClearFormatting()
+    if f.Execute(needle):
+        base = f.Parent.Start
+        rr = doc.Range(base + rel_start, base + rel_end)
+        rr.Font.Superscript = False; rr.Font.Subscript = False   # 先清
+        rr.Font.Superscript = (kind == 'sup'); rr.Font.Subscript = (kind == 'sub')
+        return True
+    return False
+
+apply_script(d, 'hm2', 2, 3, 'sup')       # hm² 公顷
+apply_script(d, 'm3/d', 1, 2, 'sup')      # m³/d 立方米
+apply_script(d, 'NH3-N', 2, 3, 'sub')     # NH₃-N 氨氮
+apply_script(d, 'Ca2+', 2, 4, 'sup')      # Ca²⁺ 钙离子
+apply_script(d, 'CO2', 2, 3, 'sub')       # CO₂ 二氧化碳
+```
+
+语义对照：m3/m2/hm2/km2（面积体积单位）→ 数字上标；O2/CO2/SO2/NH3/H2O/CH4（化学式）→ 数字下标；Ca2+/Mg2+/Na+/Fe3+/SO42-（离子）→ 数字+正负号上标；NH3-N → 3 下标、-N 不动；浓度数值（2.0mg/L）、年份、编号 → 一律不动。**必须先清再设**（Superscript=False + Subscript=False），COM 返回 -1 表示 True。先处理长模式（NH3-N、SO42-）再短模式（CO2、m3）。
+
 ## Common cleanup (git-bash)
 
 ```bash
