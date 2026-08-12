@@ -6,6 +6,8 @@ Agent skill for **MS Word COM automation on Windows** — 专用于中文公文/
 > ❌ 不适用于 Linux/macOS、WPS Office、Excel/PowerPoint、python-docx 纯库路线、Microsoft Graph 云端 API。
 > 其他组合请勿使用本 skill。
 
+> 💡 **Token 成本说明：** SKILL.md 约 620 行 / ~18K tokens，命中时整份注入 agent 主上下文（1M 窗口下约占 1.8%）。references/ 和 scripts/ 按需加载，不常驻。若对 token 敏感，可用精简模式（见 SKILL.md「Token 优化」章节）或只按需查看 references。
+
 Designed for AI agents that edit real Chinese government documents (公文): Hermes, Claude Code, Codex, OpenClaw, Cursor, etc.
 
 ## Why COM?

@@ -23,6 +23,16 @@ metadata:
 
 **适用判断：** 用户在 Windows 上要求操作本地 Word 文件（.docx/.doc），且机器装有 MS Word → 用本技能。Excel/PPT 或其他平台 → 告知用户本技能不适用，不硬套。
 
+## Token 优化（成本说明）
+
+本 SKILL.md 约 620 行 / ~18K tokens，**命中时整份注入 agent 主上下文**（1M 窗口下约占 1.8%；deepseek-v4-flash 等便宜模型按 token 计费时仍值得注意）。references/ 和 scripts/ 按需加载，不常驻。
+
+**精简用法（token 敏感时）：**
+1. **只读主上下文的前 3 章**（SCOPE / When to Use / Golden Rules）即可获得安全底线——Golden Rules 是全部事故教训的浓缩。
+2. **具体操作按需查**：需要表格手术时再看「Tables (Word)」章节；需要字体时再看「Fonts」/「Font substitution」；不要一次性通读全文。
+3. **references/ 和 scripts/ 只在需要时打开**（skill_view file_path），不要默认全部加载。
+4. 若用轻量模型且任务简单（如只做查找替换），可只依赖 Golden Rules + Find & Replace 章节，其余忽略。
+
 On Windows, drive MS Office applications directly through their COM object model with
 `win32com.client` (pywin32). This is the **only** path that preserves complex structure —
 merged tables, styles, outline levels, headers/footers, fields, shapes — that pure-library
