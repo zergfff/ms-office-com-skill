@@ -373,6 +373,102 @@ print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method
 
 For Word, walk the object model programmatically: `w.ActiveDocument.Sections.Count`, `d.Sections(1).Headers.Count`, `d.Tables.Count`, `d.Shapes.Count`, `d.StoryRanges.Count` — inspect counts before assuming structure.
 
+## Dialog-box hang prevention (防弹窗卡死) — 后台操作被前台弹窗卡住的根治方案
+
+**Symptom: AI 后台操作 Word 卡住，前台弹出"是否保存"、"是否打开"、"文件正在使用"等对话框。** COM 调用是同步阻塞的——对话框一出现，Python 脚本就永远挂起直到有人手动点掉（或超时被杀）。
+
+**Root cause: `DisplayAlerts=0` 只抑制部分警告（保存提示等），管不了这些弹窗：文件正在使用/只读打开、受保护视图、宏安全、转换确认。** 需要组合拳（全部实测 Office 2024 可用）：
+
+### 1. 启动时的防弹窗设置（每次 COM 脚本必做）
+
+```python
+w = win32com.client.DispatchEx('Word.Application')  # 独立进程，不碰用户已打开的 Word
+w.Visible = False
+w.DisplayAlerts = 0                                  # 抑制保存等警告
+w.AutomationSecurity = 3                             # msoAutomationSecurityForceDisable 禁宏弹窗
+```
+
+### 2. 打开文件前检测占用（避免"文件正在使用"弹窗）
+
+```python
+def is_locked(path):
+    try:
+        fh = open(path, 'r+b')
+        try:
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            locked = False
+            try: msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            except: pass
+        except OSError:
+            locked = True
+        fh.close()
+        return locked
+    except (PermissionError, OSError):
+        return True
+
+if is_locked(path):
+    raise RuntimeError(f'文件被占用，拒绝打开：{path}')   # 报错而不是让 Word 弹窗卡住
+```
+
+### 3. Open / Close 全参数（堵住对话框入口）
+
+```python
+d = w.Documents.Open(path,
+    ConfirmConversions=False,     # 不弹格式转换确认
+    ReadOnly=False,
+    AddToRecentFiles=False,
+    Revert=False)                 # 不弹"已打开，是否恢复"
+
+# 保存/关闭时显式传参，杜绝"是否保存更改"弹窗
+d.Save()
+d.Close(SaveChanges=False)        # 或 SaveChanges=wdSaveChanges(-1)
+w.Quit()
+```
+
+### 4. 受保护视图检查（打开网络/他人文件时）
+
+```python
+if w.ProtectedViewWindows.Count > 0:
+    # 受保护视图下 COM 操作受限，需先退出保护视图
+    for i in range(1, w.ProtectedViewWindows.Count + 1):
+        w.ProtectedViewWindows(i).Edit()     # 或 .Activate() 后操作
+```
+
+### 5. 卡死兜底：超时 + 强杀（最后防线）
+
+即使做了上面所有防护，仍可能遇到未预料的弹窗。用后台线程 + 超时 + taskkill 兜底：
+
+```python
+import threading, subprocess, time
+
+result = {}
+def worker():
+    try:
+        pythoncom.CoInitialize()
+        w = win32com.client.DispatchEx('Word.Application')
+        w.Visible = False; w.DisplayAlerts = 0; w.AutomationSecurity = 3
+        # ... 你的 COM 操作 ...
+        w.Quit(); pythoncom.CoUninitialize()
+        result['ok'] = True
+    except Exception as e:
+        result['err'] = e
+
+t = threading.Thread(target=worker); t.start()
+t.join(timeout=120)                    # 120s 无响应视为卡死
+if t.is_alive():
+    subprocess.run('taskkill /F /IM WINWORD.EXE', shell=True)   # 强杀，别让弹窗永远挂着
+    raise RuntimeError('Word 操作超时，已强杀进程（可能遇到未抑制的弹窗）')
+if 'err' in result:
+    raise result['err']
+```
+
+**规则总结：**
+1. `DispatchEx`（独立进程）+ `DisplayAlerts=0` + `AutomationSecurity=3` 是基础三件套，**每次脚本都写**。
+2. 打开前 `is_locked()` 检测，占用就报错，绝不裸 Open。
+3. `Open`/`Close` 永远显式传全参数。
+4. 复杂脚本套线程超时 + taskkill 兜底，超时即杀不留僵尸进程。
+5. 记得备用方案：事后 `cmd //c "taskkill /F /IM WINWORD.EXE"` 清理残留。
+
 ## Dispatch vs DispatchEx vs EnsureDispatch (choose the right one)
 
 The single most common source of "why is my script controlling someone else's Word/Excel?" confusion:

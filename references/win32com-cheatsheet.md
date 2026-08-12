@@ -378,6 +378,44 @@ fr.ParagraphFormat.Alignment = 1                   # 居中
 ```
 "第 X 页 共 Y 页"：PAGE + NUMPAGES 两个域。导出 PDF 前 `d.Fields.Update()` + `d.Repaginate()`。
 
+## Word — 防弹窗卡死 (Dialog-box hang prevention)
+
+**症状：AI 后台操作 Word 卡住，前台弹出"是否保存/是否打开/文件正在使用"对话框。** COM 同步阻塞——弹窗出现脚本就永远挂起。`DisplayAlerts=0` 管不了文件占用、受保护视图、宏安全等弹窗。组合拳（实测 Office 2024）：
+
+```python
+# 1) 基础三件套
+w = win32com.client.DispatchEx('Word.Application')   # 独立进程
+w.Visible = False; w.DisplayAlerts = 0
+w.AutomationSecurity = 3                             # 禁宏弹窗
+
+# 2) 打开前检测文件占用（占用就报错，不裸 Open）
+import msvcrt
+def is_locked(path):
+    try:
+        fh = open(path, 'r+b')
+        try:
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            locked = False
+            try: msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            except: pass
+        except OSError:
+            locked = True
+        fh.close(); return locked
+    except (PermissionError, OSError):
+        return True
+
+# 3) Open/Close 全参数
+d = w.Documents.Open(path, ConfirmConversions=False, ReadOnly=False,
+                     AddToRecentFiles=False, Revert=False)
+d.Close(SaveChanges=False)    # 杜绝"是否保存"弹窗
+
+# 4) 受保护视图检查
+for i in range(1, w.ProtectedViewWindows.Count + 1):
+    w.ProtectedViewWindows(i).Edit()
+
+# 5) 复杂脚本套线程超时兜底：threading.Thread + join(timeout) + taskkill /F /IM WINWORD.EXE
+```
+
 ## Common cleanup (git-bash)
 
 ```bash
