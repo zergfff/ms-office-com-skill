@@ -217,8 +217,10 @@ Save format: pptx=24, ppt=1. `prs.SaveAs(path, 24)`.
 ## Word — export to PDF / refresh TOC / headers-footers
 
 ```python
-# export PDF (公文交付)
-d.ExportAsFixedFormat(OutputFileName=r'C:\path\out.pdf', ExportFormat=17)  # 17=wdExportFormatPDF
+# export PDF (公文交付) — 默认创建书签使用标题 (CreateBookmarks=1)
+d.ExportAsFixedFormat(OutputFileName=r'C:\path\out.pdf', ExportFormat=17, CreateBookmarks=1)
+# 前提：标题用 Heading 样式（Style=-2/-3/-4），正文不会成为书签
+# CreateBookmarks: 0=不建, 1=按标题, 2=按文档结构
 
 # refresh TOC + fields + repaginate BEFORE exporting (页码才会对)
 for toc in d.TablesOfContents: toc.Update()

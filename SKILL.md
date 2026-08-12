@@ -72,7 +72,17 @@ Edit: `ReadOnly=False`, work, then `d.Save(); d.Close(False); w.Quit()`.
 ```python
 d.ExportAsFixedFormat(OutputFileName=pdf_path, ExportFormat=17)   # 17 = wdExportFormatPDF
 ```
-Run after all edits; for long docs first refresh the TOC and update all fields (below) so the PDF has correct page numbers.
+
+**Rule: 另存为 PDF 时默认勾选"创建书签时使用 → 标题"（CreateBookmarks=1, wdExportCreateHeadingBookmarks）。** 这样 PDF 左侧导航栏会按文档标题生成书签层级，长文档翻阅方便。实测 Office 2024 可用（生成 PDF 含 `/Outlines` + 每个标题一个 `/Title` + `/Dest`）：
+
+```python
+d.ExportAsFixedFormat(OutputFileName=pdf_path, ExportFormat=17, CreateBookmarks=1)  # 1=按标题建书签
+# CreateBookmarks: 0=不创建书签, 1=wdExportCreateHeadingBookmarks(按标题), 2=wdExportCreateNoHeadings(按文档结构)
+```
+
+- **前提：文档标题必须用 Heading 样式**（`para.Style = -2/-3/-4`，OutlineLevel 1-9），书签才按标题生成；正文样式（OutlineLevel=10）不会成为书签。
+- 导出前先 `for toc in d.TablesOfContents: toc.Update()` + `d.Fields.Update()` + `d.Repaginate()`，保证 PDF 页码和书签正确。
+- 只读检查完的文档（ReadOnly=True）也可以导出 PDF，无需写回。
 
 ### Word — refresh TOC, update fields, headers/footers
 
