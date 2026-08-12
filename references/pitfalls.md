@@ -87,7 +87,7 @@ Original 7028万 total → after -66万: 6962万. Every linked number updated: s
 
 ## Incident 8: gen_py cache corruption — EnsureDispatch fails (community, pywin32 #1923)
 
-Symptom: `gencache.EnsureDispatch('Excel.Application')` raises
+Symptom: `gencache.EnsureDispatch('Word.Application')` raises
 `AttributeError: module 'win32com.gen_py.00020813-...' has no attribute 'CLSIDToClassMap'`
 (or `TypeError: This COM object can not automate the makepy process` on 64-bit Office, #1568).
 
@@ -111,11 +111,6 @@ pythoncom.CoInitialize()
 try: ... work ...
 finally: pythoncom.CoUninitialize()
 ```
-
-## Incident 11: Excel merged range reads return only top-left (community, CSDN)
-
-`ws.Range('B2:D4').Value` on a merged range returns only the top-left cell's value.
-Walk the span with `rng.Cells(r, c)` / `rng.Offset(r, c)`; when writing, set the top-left cell only.
 
 ## LLM-generation pitfalls (A类: Claude DOCX Skill 15 Critical Rules 提炼, 生成类)
 

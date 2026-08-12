@@ -1,38 +1,39 @@
 ---
 name: ms-office-com-skill
-description: "Use when editing MS Office files (Word/Excel/PowerPoint .docx/.xlsx/.pptx) on Windows via the COM interface (win32com.client). ONLY valid for Windows + MS Office COM combinations — NOT for Linux/macOS, WPS, or pure-library (python-docx/openpyxl/python-pptx) approaches. Covers full-document reads, find/replace, styles/outline, fonts, table surgery, superscript/subscript, references, cell math, slide/shape edits, and the real pitfalls (dialog hangs, infinite loops, stale processes, long-string Find errors, merged cells, image-container paragraphs)."
-version: 1.1.0
+description: "Use when editing MS Word files (.docx/.doc) on Windows via the COM interface (win32com.client). Specialized for Chinese government documents (公文): GB/T 9704-2012 formatting (仿宋_GB2312 + Times New Roman fonts, alignment, tables, page numbers), GB/T 7714 references, semantic superscript/subscript, PDF export with heading bookmarks, auto font install, dialog-hang prevention, and the real pitfalls. ONLY valid for Windows + MS Word COM — NOT for Linux/macOS, WPS, Excel/PowerPoint, or pure-library (python-docx) approaches."
+version: 2.0.0
 author: zergfff
 license: MIT
 platforms: [windows]
 metadata:
-  tags: [Word, Excel, PowerPoint, COM, win32com, Office, docx, xlsx, pptx, editing, windows-only]
+  tags: [Word, COM, win32com, Office, docx, editing, windows-only, chinese-documents, 公文]
 ---
 
-# MS Office COM Automation (Word / Excel / PowerPoint)
+# Word COM Automation — 中文公文文档处理 (Chinese Government Documents)
 
-## ⚠️ SCOPE — 本技能仅适用于 Windows + MS Office COM
+## ⚠️ SCOPE — 本技能仅适用于 Windows + Microsoft Word COM（中文文档）
 
-**本技能只适用于以下组合：Windows 操作系统 + Microsoft Office（Word/Excel/PowerPoint）+ `win32com.client` COM 接口。其他任何组合一律不得使用本技能：**
+**本技能只适用于以下组合：Windows 操作系统 + Microsoft Word + `win32com.client` COM 接口，专用于中文公文/报告文档（.docx/.doc）。其他任何组合一律不得使用本技能：**
 
 - ❌ **Linux / macOS** — COM 是 Windows 专属，本技能所有代码在这些平台不可用。
-- ❌ **WPS Office** — ProgID 不同（`Kwps.Application` 等），对象模型行为有差异，本技能不覆盖；WPS 报错见 pitfalls。
-- ❌ **python-docx / openpyxl / python-pptx 等纯库** — 本技能是 COM 路线；除非用户明确点名用这些库，否则禁止使用它们替代 COM。
+- ❌ **WPS Office** — ProgID 不同（`Kwps.Application` 等），对象模型行为有差异，本技能不覆盖。
+- ❌ **Excel / PowerPoint** — 本技能只覆盖 Word；Excel/PPT 的 COM 操作不在范围内。
+- ❌ **python-docx 等纯库** — 本技能是 COM 路线；除非用户明确点名用这些库，否则禁止使用它们替代 COM。
 - ❌ **Microsoft Graph / Office 365 云端 API** — 那是不同的接口体系（OAuth + Graph），与本技能无关。
 
-**适用判断：** 用户在 Windows 上要求操作本地 Office 文件（.docx/.xlsx/.pptx 或旧版 .doc/.xls/.ppt），且机器装有 MS Office → 用本技能。其他情况 → 告知用户本技能不适用，不硬套。
+**适用判断：** 用户在 Windows 上要求操作本地 Word 文件（.docx/.doc），且机器装有 MS Word → 用本技能。Excel/PPT 或其他平台 → 告知用户本技能不适用，不硬套。
 
 On Windows, drive MS Office applications directly through their COM object model with
 `win32com.client` (pywin32). This is the **only** path that preserves complex structure —
 merged tables, styles, outline levels, headers/footers, fields, shapes — that pure-library
-approaches (python-docx / openpyxl / python-pptx) flatten or lose.
+approaches (python-docx) flatten or lose.
 
-Do NOT use python-docx / openpyxl / python-pptx unless the user explicitly names them.
+Do NOT use python-docx unless the user explicitly names it.
 If COM fails, report the native Windows error — do not silently fall back.
 
 ## When to Use
 
-- Read, edit, audit, or mass-edit an existing `.docx` / `.xlsx` / `.pptx` / legacy `.doc` / `.xls` / `.ppt`.
+- Read, edit, audit, or mass-edit an existing `.docx` / `.doc`.
 - Fix formatting, numbering, styles, outline levels, tables, budgets, or cross-document consistency.
 - Generate a new document with exact structure (tables, headings, merged cells, images).
 
@@ -40,13 +41,13 @@ If COM fails, report the native Windows error — do not silently fall back.
 
 1. **Backup before every edit round** — `cp file.docx file_bak.docx` in the same folder. Restoration is the only reliable undo after corruption.
 2. **Never run a Find.Execute replace-loop whose replacement text CONTAINS the search text.** The loop re-matches its own output → infinite duplication (one incident inserted 2,282 copies of a TOC block). Use paragraph-level iteration when `new` contains `old`.
-3. **After any COM timeout/crash, kill the Office process before reopening.** A stale WINWORD.EXE / EXCEL.EXE / POWERPNT.EXE keeps the corrupted doc in memory; the next `Documents.Open` reuses that instance and `Save()` writes the corruption to disk. Kill with `cmd //c "taskkill /F /IM WINWORD.EXE"` (from git-bash) or `taskkill //F //IM WINWORD.EXE`.
+3. **After any COM timeout/crash, kill the Office process before reopening.** A stale WINWORD.EXE keeps the corrupted doc in memory; the next `Documents.Open` reuses that instance and `Save()` writes the corruption to disk. Kill with `cmd //c "taskkill /F /IM WINWORD.EXE"` (from git-bash) or `taskkill //F //IM WINWORD.EXE`.
 4. **Verify by re-reading, never trust "saved ok".** Reopen read-only, count key phrases (`t.count('x')`), check char/table counts vs. baseline, confirm headings appear exactly once.
 5. Set `DisplayAlerts = 0`, always `Close(False)` + `Quit()` in a finally-style flow.
 
 ## Environment
 
-- **Windows 11 + Office 2024 (LTSC)** — primary target. All patterns below work unchanged on Office 2016–2024; the COM object model for Word/Excel/PowerPoint has been stable across these versions.
+- **Windows 11 + Office 2024 (LTSC)** — primary target. All patterns below work unchanged on Office 2016–2024; the Word COM object model has been stable across these versions.
 - Python 3.x + pywin32 (`pip install pywin32`). Use `pythoncom.CoInitialize()` in worker threads before touching COM.
 - `gencache.EnsureDispatch('Word.Application')` gives early binding (typed properties, faster, more reliable constants) at the cost of a one-time type-cache build; plain `Dispatch` is late binding. Use `EnsureDispatch` for complex scripts.
 
@@ -131,30 +132,6 @@ d.AcceptAllRevisions()                    # accept everything (or d.RejectAllRev
 d.TrackRevisions = False
 ```
 Remember: `d.Content.Text` includes revision marks (`InsertedText`/`DeletedText` markers) when revisions are pending — accept/reject before text-count verification.
-
-### Excel
-
-```python
-import win32com.client
-x = win32com.client.DispatchEx('Excel.Application'); x.Visible = False; x.DisplayAlerts = 0
-wb = x.Workbooks.Open(path)              # or x.Workbooks.Add() for new
-ws = wb.Worksheets(1)                    # or ws = wb.Worksheets('Sheet1')
-ws.Cells(r, c).Value = 'text' / 123 / 0.5
-ws.Range('A1:B10').Value = [[..], [..]]  # 2D array write is fastest
-wb.Save(); wb.Close(False); x.Quit()
-```
-
-### PowerPoint
-
-```python
-import win32com.client
-p = win32com.client.DispatchEx('PowerPoint.Application')   # Visible may need True for some ops
-prs = p.Presentations.Open(path)
-for slide in prs.Slides:
-    for shp in slide.Shapes:
-        if shp.HasTextFrame: print(shp.TextFrame.TextRange.Text)
-prs.Save(); prs.Close(); p.Quit()
-```
 
 ## Find & Replace (Word) — the danger zone
 
@@ -436,99 +413,13 @@ fr.ParagraphFormat.Alignment = 1                   # 居中（也可 0 左 / 2 �
 - 公文多节时每节分别设；正文节若要求"第 X 页 共 Y 页"，用两个域：`PAGE` + `NUMPAGES`（`'PAGE \\* MERGEFORMAT / NUMPAGES \\* MERGEFORMAT'` 形式或分开 Add）。
 - 导出 PDF 前先 `d.Fields.Update()` + `d.Repaginate()` 让页码正确。
 
-## Cells & Formats (Excel)
-
-- `ws.Cells(r, c).Value` read/write; batch with `ws.Range('A1:C5').Value = [[...]]`.
-- Merge: `ws.Range('A1:C1').Merge()`; unmerge: `.UnMerge()`.
-- Formulas: `ws.Cells(r, c).Formula = '=SUM(A1:A10)'`.
-- Format: `ws.Range('A1').Font.Bold = True`; number format `ws.Cells(r,c).NumberFormat = '0.00'`; column width `ws.Columns(1).ColumnWidth = 20`.
-- Row/col insert: `ws.Rows(5).Insert()` / `ws.Columns(2).Insert()`; delete likewise.
-- Save format constants when SaveAs: xlsx = 51, xlsm = 52, csv = 6, xls = 56.
-
-### Excel — PivotTable / Chart / conditional formatting / validation / freeze panes / filter
-
-```python
-# freeze top rows (header stays visible)
-x.ActiveWindow.SplitRow = 1; x.ActiveWindow.FreezePanes = True
-
-# autofilter on a range
-ws.Range('A1:D50').AutoFilter(1, '晋城')
-
-# named range
-wb.Names.Add('设备清单', ws.Range('A2:A20'))
-
-# conditional formatting: highlight cells > threshold
-rng = ws.Range('C2:C50')
-rng.FormatConditions.Add(2, 3, '>100')          # 2=xlCellValue, 3=xlGreater
-rng.FormatConditions(1).Interior.Color = 0x00FF00   # BGR! light green
-
-# data validation: whole-number 1..100 on a range
-v = ws.Range('B2:B10').Validation
-v.Delete()
-v.Add(1, 1, 1, '1', '100')                      # 1=xlValidateWholeNumber, 1=xlValidAlertStop, 1=xlBetween
-
-# chart from a range
-cht = ws.Shapes.AddChart().Chart
-cht.SetSourceData(ws.Range('A1:B10'))
-cht.ChartType = 51                               # xlColumnClustered
-
-# pivot table from existing data
-pc = x.ActiveWorkbook.PivotCaches().Create(1, ws.Range('A1:D50'))   # 1=xlDatabase
-pt = pc.CreatePivotTable('Pivot!R3C1', '汇总')
-pt.PivotFields('产品').Orientation = 1           # xlRowField
-pt.PivotFields('金额').Orientation = 4           # xlDataField
-```
-
-### Excel — export sheet to PDF (for visual verification or delivery)
-
-```python
-ws.ExportAsFixedFormat(0, r'C:\path\sheet.pdf')   # 0 = xlTypePDF
-```
-Equivalent of the PowerPoint slide-export trick below — render to PDF then convert pages to images if an LLM needs to "see" the layout.
-
-## Slides & Shapes (PowerPoint)
-
-- `prs.Slides.Add(index, layout)` — layout constants: 1 = title, 2 = title+text, 12 = blank.
-- Add textbox: `slide.Shapes.AddTextbox(1, left, top, w, h).TextFrame.TextRange.Text = '...'`
-- Font: `...TextRange.Font.Size/Bold/Color.RGB`.
-- Add table: `shp = slide.Shapes.AddTable(rows, cols, l, t, w, h)`; cell text via `shp.Table.Cell(r, c).Shape.TextFrame.TextRange.Text`.
-- Add picture: `slide.Shapes.AddPicture(path, False, True, l, t, w, h)`.
-- Save format: pptx = 24, ppt = 1.
-
-### PowerPoint — export slides to images (visual verification)
-
-The strongest trick from the active PowerPoint MCP projects: render slides to PNG and inspect them visually (catches overlapping shapes, broken layout, wrong colors that text-only checks miss).
-
-```python
-for i, slide in enumerate(prs.Slides, 1):
-    slide.Export(rf'C:\path\slide_{i}.png', 'PNG', 1280, 720)
-```
-
-### PowerPoint — slide master / speaker notes / transitions
-
-```python
-# speaker notes
-slide.NotesPage.Shapes(2).TextFrame.TextRange.Text = '讲解要点...'
-
-# apply template / theme (masters + layouts)
-prs.ApplyTemplate(r'C:\path\template.potx')
-
-# slide master: set title font for the whole deck (one edit → all inheriting slides)
-master = prs.SlideMaster
-master.Shapes.Title.TextFrame.TextRange.Font.Size = 36
-
-# transition on a slide
-slide.SlideShowTransition.EntryEffect = 1          # ppEffectCut; 33=ppEffectFade, 51=ppEffectWipeLeft
-slide.SlideShowTransition.Duration = 1.0
-```
-
 ## COM Object Discovery (探索对象模型)
 
 When you don't know the exact property/method names of a COM object (the "复杂结构" pain), enumerate them at runtime instead of guessing — this is how the active Office MCP projects were built:
 
 ```python
 import win32com.client
-x = win32com.client.DispatchEx('Excel.Application')   # 只读探索，独立进程
+w = win32com.client.DispatchEx('Word.Application')   # 只读探索，独立进程
 props = getattr(x, '_prop_map_get_', {})
 print('PROPERTIES:', sorted(props.keys()))
 print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method' in str(type(getattr(x, m, None))).lower()]))
@@ -634,7 +525,7 @@ if 'err' in result:
 
 ## Dispatch vs DispatchEx vs EnsureDispatch (choose the right one)
 
-The single most common source of "why is my script controlling someone else's Word/Excel?" confusion:
+The single most common source of "why is my script controlling someone else's Word?" confusion:
 
 | Call | Behavior | Use when |
 |---|---|---|
@@ -646,7 +537,7 @@ The single most common source of "why is my script controlling someone else's Wo
 - `gencache` cache corruption: `EnsureDispatch` raises `AttributeError: module 'win32com.gen_py...' has no attribute 'CLSIDToClassMap'` (pywin32 #1923). Fix: **delete `%TEMP%\gen_py`** and retry — it does NOT rebuild a corrupted cache automatically.
 - 64-bit Office + `EnsureDispatch` can fail with `TypeError: This COM object can not automate the makepy process` (pywin32 #1568) when the type library doesn't register cleanly. Run `makepy` manually or clear the cache.
 - `DispatchEx` does not see documents opened in a pre-existing interactive Office instance; `Dispatch` may attach to one unexpectedly. Pick deliberately per script.
-- Excel lingers after `Quit()` when launched via `Dispatch` — prefer `DispatchEx` for guaranteed cleanup, or `taskkill /F /IM EXCEL.EXE` after.
+- Word may linger after `Quit()` when launched via `Dispatch` — prefer `DispatchEx` for guaranteed cleanup, or `taskkill /F /IM WINWORD.EXE` after.
 
 ## Multi-threaded COM (threading)
 
@@ -669,19 +560,6 @@ def worker(path):
     finally:
         pythoncom.CoUninitialize()
 ```
-
-## Excel merged-cell reads (merged ranges)
-
-On a merged range, `Range.Address` / `.Value` returns **only the top-left cell**. To get every covered row/column, walk with `Offset`:
-
-```python
-rng = ws.Range('B2:D4')
-for r in range(rng.Rows.Count):
-    for c in range(rng.Columns.Count):
-        cell = rng.Cells(r + 1, c + 1)      # or rng.Offset(r, c)
-        print(cell.Value)
-```
-Rule of thumb: never assume a merged range's `.Value` fills every cell — set the top-left cell only, and read via the full range object when you need the merged span.
 
 ## Image-Container Paragraphs (Word) — data-loss incident
 
@@ -706,22 +584,20 @@ for k in ['<known-pattern>']:
     print(k, t.count(k))                                # expect 1, not 2282
 ```
 
-For Excel: re-open and verify cell values / sheet count / merged ranges. For PPT: verify slide count and shape counts.
-
 ## Budget / Data-Cascade Edits
 
 When a quantity changes (e.g. 6 sets → 4 sets), recompute and update EVERY linked number: subtotals, grand total, funding split, annual split, per-appendix tables, remarks text, %-based figures. Verify at the end: `a+b==total`, funding rows sum to total, annual rows sum to total, line items sum to subtotal.
 
 ## Verification Checklist
 
-1. Reopen read-only; char/sheet/slide counts sane (not 3× inflated).
+1. Reopen read-only; char/paragraph/table counts sane (not 3× inflated).
 2. `t.count('关键旧短语') == 0` and `t.count('关键新短语') >= 1` for each edit.
 3. Appendix headings appear exactly once; TOC entries match body titles.
 4. Budget sums reconcile.
 5. No leftover heading-styled body lines (`OutlineLevel != 10` review).
-6. No process left running — `tasklist | findstr /i "WINWORD EXCEL POWERPNT"` clean.
+6. No process left running — `tasklist | findstr /i "WINWORD"` clean.
 
 ## References
 
-- `references/win32com-cheatsheet.md` — full verified snippets: safe bulk replace, style constants table, table column add/delete, merged-cell reads, image insert/resize, Excel cell/format batch ops, PPT slide/shape/table ops.
+- `references/win32com-cheatsheet.md` — full verified snippets: safe bulk replace, style constants table, table column add/delete, merged-cell reads, image insert/resize, fonts, PDF export, page numbers, references, superscript/subscript.
 - `references/pitfalls.md` — incident transcripts: infinite TOC duplication, stale-process corruption, long-string Find error, stale paragraph lists, image-container paragraph loss, style off-by-one.

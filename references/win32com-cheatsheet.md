@@ -135,85 +135,6 @@ print(len(text), d.Paragraphs.Count, d.Tables.Count, d.Sections.Count)
 ```
 Save to a cache .txt and read it with read_file for full-document analysis; grep/search works on it.
 
-## Excel — open / read / write
-
-```python
-import win32com.client
-x = win32com.client.DispatchEx('Excel.Application'); x.Visible = False; x.DisplayAlerts = 0   # DispatchEx 独立进程，退出干净
-wb = x.Workbooks.Open(r'C:\path\book.xlsx')
-ws = wb.Worksheets(1)                      # or wb.Worksheets('预算表')
-
-val = ws.Cells(3, 5).Value                 # read a cell
-ws.Cells(4, 5).Value = 1234.5              # write a cell
-ws.Range('B2:D10').Value = [ [1,2,3], [4,5,6], ... ]   # batch write 2D list
-ws.Cells(5, 1).Formula = '=SUM(B2:B10)'    # formula
-
-# merge / unmerge
-ws.Range('A1:C1').Merge(); ws.Range('A1:C1').UnMerge()
-
-# formatting
-ws.Range('A1').Font.Bold = True
-ws.Range('A1').Font.Size = 12
-ws.Cells(1, 1).NumberFormat = '#,##0.00'
-ws.Columns(1).ColumnWidth = 22
-ws.Range('A1:D1').Interior.Color = 0xFFFF00   # BGR! yellow
-
-# row/col insert/delete
-ws.Rows(5).Insert(); ws.Rows(5).Delete()
-ws.Columns(3).Insert()
-
-# new workbook + rename sheet
-wb2 = x.Workbooks.Add(); ws2 = wb2.Worksheets(1); ws2.Name = '新表'
-
-wb.Save(); wb.Close(False); x.Quit()
-```
-
-SaveAs format constants: xlsx=51, xlsm=52, csv=6, xls=56. Use `wb.SaveAs(path, FileFormat=51)`.
-
-## Excel — value gotchas
-
-- Empty cell reads as `None`, not ''.
-- Dates come back as `datetime.datetime` — format with `.strftime()`.
-- Batch write a column as a 1-column list of lists: `[[v] for v in values]`.
-- Setting `.Value` on a merged range raises — set the top-left cell only.
-- COM quirk: Excel sometimes keeps a hidden instance alive — always `x.Quit()` in finally, and `taskkill /F /IM EXCEL.EXE` if it lingers.
-
-## PowerPoint — open / edit slides / shapes
-
-```python
-import win32com.client
-p = win32com.client.DispatchEx('PowerPoint.Application')   # DispatchEx 独立进程
-p.Visible = True                            # PPT needs Visible=True for most ops
-prs = p.Presentations.Open(r'C:\path\deck.pptx')
-
-# read all text
-for i, slide in enumerate(prs.Slides, 1):
-    for shp in slide.Shapes:
-        if shp.HasTextFrame:
-            t = shp.TextFrame.TextRange.Text
-            if t.strip(): print(i, t)
-
-# add blank slide + textbox
-s = prs.Slides.Add(prs.Slides.Count + 1, 12)     # 12 = ppLayoutBlank
-tb = s.Shapes.AddTextbox(1, 50, 50, 500, 60)     # 1 = msoTextOrientationHorizontal
-tr = tb.TextFrame.TextRange
-tr.Text = '标题文字'
-tr.Font.Size = 32; tr.Font.Bold = True
-
-# add table
-st = s.Shapes.AddTable(3, 4, 50, 150, 600, 120)
-for r in range(1, 4):
-    for c in range(1, 5):
-        st.Table.Cell(r, c).Shape.TextFrame.TextRange.Text = f'{r},{c}'
-
-# add picture
-s.Shapes.AddPicture(r'C:\path\img.png', False, True, 50, 300, 400, 250)
-
-prs.Save(); prs.Close(); p.Quit()
-```
-
-Save format: pptx=24, ppt=1. `prs.SaveAs(path, 24)`.
-
 ## Word — export to PDF / refresh TOC / headers-footers
 
 ```python
@@ -252,48 +173,11 @@ d.AcceptAllRevisions(); d.TrackRevisions = False
 ```
 注意：有未接受的修订时 `d.Content.Text` 会含修订标记，先 Accept 再做文本计数验证。
 
-## Excel — advanced (PivotTable / Chart / conditional formatting / validation / freeze / filter)
-
-```python
-x.ActiveWindow.SplitRow = 1; x.ActiveWindow.FreezePanes = True      # 冻结首行
-ws.Range('A1:D50').AutoFilter(1, '晋城')                             # 自动筛选
-wb.Names.Add('设备清单', ws.Range('A2:A20'))                         # 命名区域
-
-rng = ws.Range('C2:C50')
-rng.FormatConditions.Add(2, 3, '>100')                              # 2=xlCellValue, 3=xlGreater
-rng.FormatConditions(1).Interior.Color = 0x00FF00                   # BGR 浅绿
-
-v = ws.Range('B2:B10').Validation; v.Delete()
-v.Add(1, 1, 1, '1', '100')                                          # 整数 1..100 校验
-
-cht = ws.Shapes.AddChart().Chart; cht.SetSourceData(ws.Range('A1:B10')); cht.ChartType = 51
-
-pc = x.ActiveWorkbook.PivotCaches().Create(1, ws.Range('A1:D50'))
-pt = pc.CreatePivotTable('Pivot!R3C1', '汇总')
-pt.PivotFields('产品').Orientation = 1; pt.PivotFields('金额').Orientation = 4
-
-# sheet → PDF (视觉验证/交付)
-ws.ExportAsFixedFormat(0, r'C:\path\sheet.pdf')
-```
-
-## PowerPoint — export slides to images / notes / master / transitions
-
-```python
-for i, slide in enumerate(prs.Slides, 1):
-    slide.Export(rf'C:\path\slide_{i}.png', 'PNG', 1280, 720)   # 视觉验证
-
-slide.NotesPage.Shapes(2).TextFrame.TextRange.Text = '讲解要点...'
-prs.ApplyTemplate(r'C:\path\template.potx')
-prs.SlideMaster.Shapes.Title.TextFrame.TextRange.Font.Size = 36
-slide.SlideShowTransition.EntryEffect = 33                        # ppEffectFade
-slide.SlideShowTransition.Duration = 1.0
-```
-
 ## COM Object Discovery (探索对象模型)
 
 ```python
 import win32com.client
-x = win32com.client.Dispatch('Excel.Application')   # 只读探索，Dispatch 即可
+w = win32com.client.Dispatch('Word.Application')   # 只读探索，Dispatch 即可
 props = getattr(x, '_prop_map_get_', {})
 print('PROPERTIES:', sorted(props.keys()))
 print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method' in str(type(getattr(x, m, None))).lower()]))
@@ -487,7 +371,6 @@ apply_script(d, 'CO2', 2, 3, 'sub')       # CO₂ 二氧化碳
 
 ```bash
 cmd //c "taskkill /F /IM WINWORD.EXE"
-cmd //c "taskkill /F /IM EXCEL.EXE"
-cmd //c "taskkill /F /IM POWERPNT.EXE"
-tasklist | findstr /i "WINWORD EXCEL POWERPNT"    # verify none remain
+
+tasklist | findstr /i "WINWORD"    # verify none remain
 ```
