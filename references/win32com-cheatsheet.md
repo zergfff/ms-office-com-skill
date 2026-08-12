@@ -351,6 +351,33 @@ w.SubstituteFont('楷体_GB2312', '楷体')
 ```
 注意：`Document.FontSubstitutions` 集合在 win32com 下访问常报错，用 SubstituteFont 方法代替。生僻字检测可用 fontTools 查字体 cmap。
 
+## Word — 表格自动调整 (AI 表格超页边距修复)
+
+**规则：AI 生成的表格常超出页边距，修复顺序 = 表格布局 → 根据窗口自动调整 → 根据内容自动调整。**
+
+```python
+t.AllowAutoFit = True
+t.AutoFitBehavior(1)          # wdAutoFitWindow 根据窗口自动调整（首选）
+# t.AutoFitBehavior(2)        # wdAutoFitContent 根据内容自动调整
+# t.AutoFitBehavior(0)        # wdAutoFitFixed 固定列宽
+```
+实测 Office 2024：`AutoFitBehavior(1)` → PreferredWidthType=1（百分比），`AutoFitBehavior(2)` → PreferredWidthType=2, PreferredWidth=100。**新表生成后默认调用一次 AutoFitBehavior(1)。**
+
+## Word — 页脚页码 (默认规则)
+
+**规则：AI 生成 Word 默认页面底端加页码，小五号（9pt）、Times New Roman，居中。**
+
+```python
+sec = d.Sections(1)
+ftr = sec.Footers(1)
+fr = ftr.Range; fr.Text = ''
+fr.Fields.Add(fr, -1, 'PAGE \\* MERGEFORMAT')     # PAGE 域
+fr.Font.Name = 'Times New Roman'                   # 页码为数字，只设 Name（设 NameFarEast 会报 0x800a16d4）
+fr.Font.Size = 9                                   # 小五号
+fr.ParagraphFormat.Alignment = 1                   # 居中
+```
+"第 X 页 共 Y 页"：PAGE + NUMPAGES 两个域。导出 PDF 前 `d.Fields.Update()` + `d.Repaginate()`。
+
 ## Common cleanup (git-bash)
 
 ```bash

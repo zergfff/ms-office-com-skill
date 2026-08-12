@@ -238,6 +238,41 @@ t.Rows.Alignment = 1                                # wdRowAlignCenter（表格�
 - **Append a table at end:** collapse range to end, `d.Tables.Add(r, rows, cols)`, `t.Borders.Enable = True`, fill `t.Cell(i,j).Range.Text`.
 - Insert a heading before a position: `r = d.Range(pos, pos); r.InsertBefore(text + '\r')`, then set style on the inserted range.
 
+### Table auto-fit — 表格超出页边距的修复 (AI-generated tables)
+
+**Rule: AI 生成的表格常超出页边距，手动修复顺序 = 表格布局 → 根据窗口自动调整 → 根据内容自动调整。COM 里对应 `AllowAutoFit` + `AutoFitBehavior()`（实测 Office 2024 可用）：**
+
+```python
+t.AllowAutoFit = True
+t.AutoFitBehavior(1)          # wdAutoFitWindow — 根据窗口自动调整（首选，把表收进页边距）
+# 若仍需微调：t.AutoFitBehavior(2)  wdAutoFitContent — 根据内容自动调整
+# 固定列宽：t.AutoFitBehavior(0)     wdAutoFitFixed
+```
+
+- 实测效果：`AutoFitBehavior(1)` 后 `t.PreferredWidthType` 变为 1（百分比，整表占页面宽度）；`AutoFitBehavior(2)` 后变为 2 且 `PreferredWidth=100`。
+- **新表生成后默认就应调用一次** `AutoFitBehavior(1)`，不要等用户发现超边距。
+- 若个别列仍超宽，可再设 `t.Columns(j).Width = pt` 或 `t.Cell(r,c).Width` 微调。
+- 表题（表上方"表4-1 …"段落）居中，与表格整体宽度无关。
+
+## Page numbers (页码)
+
+**Rule: AI 生成 Word 默认页面底端（页脚）加入页码，小五号（9pt）、Times New Roman。** 实测 Office 2024 可用：
+
+```python
+sec = d.Sections(1)
+ftr = sec.Footers(1)
+fr = ftr.Range; fr.Text = ''
+fr.Fields.Add(fr, -1, 'PAGE \\* MERGEFORMAT')     # PAGE 域（自动页码）
+fr.Font.Name = 'Times New Roman'                   # 只设 Name 即可（页码是数字）
+fr.Font.Size = 9                                   # 小五号 = 9pt
+fr.ParagraphFormat.Alignment = 1                   # 居中（也可 0 左 / 2 右）
+```
+
+- 注意：页脚 Range 上**不要设 `NameFarEast`**（实测报 OLE error 0x800a16d4）——页码为数字，`Font.Name` 足够。
+- 页脚内容会含 `\r` 结尾（`'1\r'`），读回验证时注意 strip。
+- 公文多节时每节分别设；正文节若要求"第 X 页 共 Y 页"，用两个域：`PAGE` + `NUMPAGES`（`'PAGE \\* MERGEFORMAT / NUMPAGES \\* MERGEFORMAT'` 形式或分开 Add）。
+- 导出 PDF 前先 `d.Fields.Update()` + `d.Repaginate()` 让页码正确。
+
 ## Cells & Formats (Excel)
 
 - `ws.Cells(r, c).Value` read/write; batch with `ws.Range('A1:C5').Value = [[...]]`.
