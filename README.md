@@ -46,9 +46,18 @@ Copy the folder into the agent's skills directory.
 
 ## Requirements
 
-- Windows OS
+- **Windows 11 + Microsoft Office 2024 (LTSC)** — primary target; works on Office 2016+ (COM object model stable across these versions)
 - Microsoft Office installed (Word / Excel / PowerPoint)
 - Python with pywin32: `pip install pywin32`
+
+## Feature Map (by tool)
+
+| Tool | Capabilities |
+|---|---|
+| **Word** | full read (incl. tables), safe find/replace (paragraph-level, self-match-safe), styles & outline levels, table surgery (add/delete columns, merged-cell-safe reads, append tables), image insert/guard, **export PDF**, **TOC refresh + field update**, **per-section headers/footers**, **comments (批注) read/write**, **track changes accept/reject** |
+| **Excel** | cell/range read/write (batch), formulas, merge, formatting, row/col insert/delete, **PivotTable**, **charts**, **conditional formatting**, **data validation**, **freeze panes**, **autofilter**, **named ranges**, **sheet→PDF export**, SaveAs format constants |
+| **PowerPoint** | slide read/add, textboxes, tables, pictures, **export slides to PNG (visual verification)**, **speaker notes**, **template/theme apply**, **slide master**, **transitions**, SaveAs format constants |
+| **通用** | crash recovery (taskkill), post-edit health checks, budget cascade verification, **COM object discovery (runtime property/method enumeration)**, Chinese 公文 formatting conventions |
 
 ## License
 

@@ -214,6 +214,90 @@ prs.Save(); prs.Close(); p.Quit()
 
 Save format: pptx=24, ppt=1. `prs.SaveAs(path, 24)`.
 
+## Word — export to PDF / refresh TOC / headers-footers
+
+```python
+# export PDF (公文交付)
+d.ExportAsFixedFormat(OutputFileName=r'C:\path\out.pdf', ExportFormat=17)  # 17=wdExportFormatPDF
+
+# refresh TOC + fields + repaginate BEFORE exporting (页码才会对)
+for toc in d.TablesOfContents: toc.Update()
+d.Fields.Update()
+d.Repaginate()
+
+# per-section headers/footers (公文多节：封面无页码、正文重起)
+sec = d.Sections(1)
+sec.Headers(1).Range.Text = '晋城市生态环境局'          # 1=primary, 2=even, 3=first
+ftr = sec.Footers(1)
+ftr.Range.Text = '第 '
+ftr.Range.Fields.Add(ftr.Range, -1, 'PAGE \\* MERGEFORMAT')
+```
+
+## Word — comments & track changes (专家意见/批注工作流)
+
+```python
+# read all comments
+for c in d.Comments:
+    print(c.Index, c.Author, c.Range.Text)
+
+# add comment at a range
+d.Comments.Add(d.Range(start, end), '意见内容')
+
+# track changes
+d.TrackRevisions = True
+# ...edits...
+d.AcceptAllRevisions(); d.TrackRevisions = False
+```
+注意：有未接受的修订时 `d.Content.Text` 会含修订标记，先 Accept 再做文本计数验证。
+
+## Excel — advanced (PivotTable / Chart / conditional formatting / validation / freeze / filter)
+
+```python
+x.ActiveWindow.SplitRow = 1; x.ActiveWindow.FreezePanes = True      # 冻结首行
+ws.Range('A1:D50').AutoFilter(1, '晋城')                             # 自动筛选
+wb.Names.Add('设备清单', ws.Range('A2:A20'))                         # 命名区域
+
+rng = ws.Range('C2:C50')
+rng.FormatConditions.Add(2, 3, '>100')                              # 2=xlCellValue, 3=xlGreater
+rng.FormatConditions(1).Interior.Color = 0x00FF00                   # BGR 浅绿
+
+v = ws.Range('B2:B10').Validation; v.Delete()
+v.Add(1, 1, 1, '1', '100')                                          # 整数 1..100 校验
+
+cht = ws.Shapes.AddChart().Chart; cht.SetSourceData(ws.Range('A1:B10')); cht.ChartType = 51
+
+pc = x.ActiveWorkbook.PivotCaches().Create(1, ws.Range('A1:D50'))
+pt = pc.CreatePivotTable('Pivot!R3C1', '汇总')
+pt.PivotFields('产品').Orientation = 1; pt.PivotFields('金额').Orientation = 4
+
+# sheet → PDF (视觉验证/交付)
+ws.ExportAsFixedFormat(0, r'C:\path\sheet.pdf')
+```
+
+## PowerPoint — export slides to images / notes / master / transitions
+
+```python
+for i, slide in enumerate(prs.Slides, 1):
+    slide.Export(rf'C:\path\slide_{i}.png', 'PNG', 1280, 720)   # 视觉验证
+
+slide.NotesPage.Shapes(2).TextFrame.TextRange.Text = '讲解要点...'
+prs.ApplyTemplate(r'C:\path\template.potx')
+prs.SlideMaster.Shapes.Title.TextFrame.TextRange.Font.Size = 36
+slide.SlideShowTransition.EntryEffect = 33                        # ppEffectFade
+slide.SlideShowTransition.Duration = 1.0
+```
+
+## COM Object Discovery (探索对象模型)
+
+```python
+import win32com.client
+x = win32com.client.Dispatch('Excel.Application')
+props = getattr(x, '_prop_map_get_', {})
+print('PROPERTIES:', sorted(props.keys()))
+print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method' in str(type(getattr(x, m, None))).lower()]))
+# Word: 先数再动 —— d.Sections.Count, d.Sections(1).Headers.Count, d.Tables.Count, d.Shapes.Count
+```
+
 ## Common cleanup (git-bash)
 
 ```bash

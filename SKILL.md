@@ -33,6 +33,12 @@ If COM fails, report the native Windows error — do not silently fall back.
 4. **Verify by re-reading, never trust "saved ok".** Reopen read-only, count key phrases (`t.count('x')`), check char/table counts vs. baseline, confirm headings appear exactly once.
 5. Set `DisplayAlerts = 0`, always `Close(False)` + `Quit()` in a finally-style flow.
 
+## Environment
+
+- **Windows 11 + Office 2024 (LTSC)** — primary target. All patterns below work unchanged on Office 2016–2024; the COM object model for Word/Excel/PowerPoint has been stable across these versions.
+- Python 3.x + pywin32 (`pip install pywin32`). Use `pythoncom.CoInitialize()` in worker threads before touching COM.
+- `gencache.EnsureDispatch('Word.Application')` gives early binding (typed properties, faster, more reliable constants) at the cost of a one-time type-cache build; plain `Dispatch` is late binding. Use `EnsureDispatch` for complex scripts.
+
 ## Core Patterns
 
 ### Word
@@ -47,6 +53,61 @@ d.Close(False); w.Quit()
 ```
 
 Edit: `ReadOnly=False`, work, then `d.Save(); d.Close(False); w.Quit()`.
+
+### Word — export to PDF (公文交付)
+
+```python
+d.ExportAsFixedFormat(OutputFileName=pdf_path, ExportFormat=17)   # 17 = wdExportFormatPDF
+```
+Run after all edits; for long docs first refresh the TOC and update all fields (below) so the PDF has correct page numbers.
+
+### Word — refresh TOC, update fields, headers/footers
+
+After any heading/paragraph edits, the TOC page numbers and cross-reference fields are stale. Refresh them before saving/exporting:
+
+```python
+for toc in d.TablesOfContents: toc.Update()          # refresh each TOC
+d.Fields.Update()                                     # update all fields (page numbers, cross-refs)
+d.Repaginate()                                        # recalc page layout
+```
+
+Headers/footers are per-section (公文常有多节，页码从正文重起):
+
+```python
+sec = d.Sections(1)
+hdr = sec.Headers(1)                                  # 1 = wdHeaderFooterPrimary; 2 = even, 3 = first
+hdr.Range.Text = '晋城市生态环境局'
+ftr = sec.Footers(1)
+ftr.Range.Text = '第 '                     # then insert PAGE field:
+ftr.Range.Fields.Add(ftr.Range, -1, 'PAGE \\* MERGEFORMAT')
+```
+
+### Word — comments (批注) — expert-review workflows
+
+Read all comments (专家意见常以批注形式给):
+
+```python
+for c in d.Comments:                     # 1-based collection
+    print(c.Index, c.Author, c.Range.Text)
+```
+
+Add a comment anchored to a range; delete comments:
+
+```python
+rng = d.Range(start_pos, end_pos)
+d.Comments.Add(rng, '修改意见文本')
+d.Comments(i).Delete()
+```
+
+### Word — track changes / accept revisions
+
+```python
+d.TrackRevisions = True                   # record edits as revisions
+# ... make edits ...
+d.AcceptAllRevisions()                    # accept everything (or d.RejectAllRevisions())
+d.TrackRevisions = False
+```
+Remember: `d.Content.Text` includes revision marks (`InsertedText`/`DeletedText` markers) when revisions are pending — accept/reject before text-count verification.
 
 ### Excel
 
@@ -112,6 +173,47 @@ for para in d.Paragraphs:
 - Row/col insert: `ws.Rows(5).Insert()` / `ws.Columns(2).Insert()`; delete likewise.
 - Save format constants when SaveAs: xlsx = 51, xlsm = 52, csv = 6, xls = 56.
 
+### Excel — PivotTable / Chart / conditional formatting / validation / freeze panes / filter
+
+```python
+# freeze top rows (header stays visible)
+x.ActiveWindow.SplitRow = 1; x.ActiveWindow.FreezePanes = True
+
+# autofilter on a range
+ws.Range('A1:D50').AutoFilter(1, '晋城')
+
+# named range
+wb.Names.Add('设备清单', ws.Range('A2:A20'))
+
+# conditional formatting: highlight cells > threshold
+rng = ws.Range('C2:C50')
+rng.FormatConditions.Add(2, 3, '>100')          # 2=xlCellValue, 3=xlGreater
+rng.FormatConditions(1).Interior.Color = 0x00FF00   # BGR! light green
+
+# data validation: whole-number 1..100 on a range
+v = ws.Range('B2:B10').Validation
+v.Delete()
+v.Add(1, 1, 1, '1', '100')                      # 1=xlValidateWholeNumber, 1=xlValidAlertStop, 1=xlBetween
+
+# chart from a range
+cht = ws.Shapes.AddChart().Chart
+cht.SetSourceData(ws.Range('A1:B10'))
+cht.ChartType = 51                               # xlColumnClustered
+
+# pivot table from existing data
+pc = x.ActiveWorkbook.PivotCaches().Create(1, ws.Range('A1:D50'))   # 1=xlDatabase
+pt = pc.CreatePivotTable('Pivot!R3C1', '汇总')
+pt.PivotFields('产品').Orientation = 1           # xlRowField
+pt.PivotFields('金额').Orientation = 4           # xlDataField
+```
+
+### Excel — export sheet to PDF (for visual verification or delivery)
+
+```python
+ws.ExportAsFixedFormat(0, r'C:\path\sheet.pdf')   # 0 = xlTypePDF
+```
+Equivalent of the PowerPoint slide-export trick below — render to PDF then convert pages to images if an LLM needs to "see" the layout.
+
 ## Slides & Shapes (PowerPoint)
 
 - `prs.Slides.Add(index, layout)` — layout constants: 1 = title, 2 = title+text, 12 = blank.
@@ -120,6 +222,47 @@ for para in d.Paragraphs:
 - Add table: `shp = slide.Shapes.AddTable(rows, cols, l, t, w, h)`; cell text via `shp.Table.Cell(r, c).Shape.TextFrame.TextRange.Text`.
 - Add picture: `slide.Shapes.AddPicture(path, False, True, l, t, w, h)`.
 - Save format: pptx = 24, ppt = 1.
+
+### PowerPoint — export slides to images (visual verification)
+
+The strongest trick from the active PowerPoint MCP projects: render slides to PNG and inspect them visually (catches overlapping shapes, broken layout, wrong colors that text-only checks miss).
+
+```python
+for i, slide in enumerate(prs.Slides, 1):
+    slide.Export(rf'C:\path\slide_{i}.png', 'PNG', 1280, 720)
+```
+
+### PowerPoint — slide master / speaker notes / transitions
+
+```python
+# speaker notes
+slide.NotesPage.Shapes(2).TextFrame.TextRange.Text = '讲解要点...'
+
+# apply template / theme (masters + layouts)
+prs.ApplyTemplate(r'C:\path\template.potx')
+
+# slide master: set title font for the whole deck (one edit → all inheriting slides)
+master = prs.SlideMaster
+master.Shapes.Title.TextFrame.TextRange.Font.Size = 36
+
+# transition on a slide
+slide.SlideShowTransition.EntryEffect = 1          # ppEffectCut; 33=ppEffectFade, 51=ppEffectWipeLeft
+slide.SlideShowTransition.Duration = 1.0
+```
+
+## COM Object Discovery (探索对象模型)
+
+When you don't know the exact property/method names of a COM object (the "复杂结构" pain), enumerate them at runtime instead of guessing — this is how the active Office MCP projects were built:
+
+```python
+import win32com.client
+x = win32com.client.Dispatch('Excel.Application')
+props = getattr(x, '_prop_map_get_', {})
+print('PROPERTIES:', sorted(props.keys()))
+print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method' in str(type(getattr(x, m, None))).lower()]))
+```
+
+For Word, walk the object model programmatically: `w.ActiveDocument.Sections.Count`, `d.Sections(1).Headers.Count`, `d.Tables.Count`, `d.Shapes.Count`, `d.StoryRanges.Count` — inspect counts before assuming structure.
 
 ## Image-Container Paragraphs (Word) — data-loss incident
 
