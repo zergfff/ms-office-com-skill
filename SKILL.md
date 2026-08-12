@@ -1,5 +1,5 @@
 ---
-name: ms-office-com-skill
+name: word-com-chinese-skill
 description: "Use when editing MS Word files (.docx/.doc) on Windows via the COM interface (win32com.client). Specialized for Chinese government documents (公文): GB/T 9704-2012 formatting (仿宋_GB2312 + Times New Roman fonts, alignment, tables, page numbers), GB/T 7714 references, semantic superscript/subscript, PDF export with heading bookmarks, auto font install, dialog-hang prevention, and the real pitfalls. ONLY valid for Windows + MS Word COM — NOT for Linux/macOS, WPS, Excel/PowerPoint, or pure-library (python-docx) approaches."
 version: 2.0.0
 author: zergfff
@@ -448,9 +448,9 @@ When you don't know the exact property/method names of a COM object (the "复杂
 ```python
 import win32com.client
 w = win32com.client.DispatchEx('Word.Application')   # 只读探索，独立进程
-props = getattr(x, '_prop_map_get_', {})
+props = getattr(w, '_prop_map_get_', {})
 print('PROPERTIES:', sorted(props.keys()))
-print('METHODS:', sorted([m for m in dir(x) if not m.startswith('_') and 'method' in str(type(getattr(x, m, None))).lower()]))
+print('METHODS:', sorted([m for m in dir(w) if not m.startswith('_') and 'method' in str(type(getattr(w, m, None))).lower()]))
 ```
 
 For Word, walk the object model programmatically: `w.ActiveDocument.Sections.Count`, `d.Sections(1).Headers.Count`, `d.Tables.Count`, `d.Shapes.Count`, `d.StoryRanges.Count` — inspect counts before assuming structure.

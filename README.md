@@ -1,43 +1,48 @@
 # word-com-chinese-skill
 
-Agent skill for **MS Word COM automation on Windows** — 专用于中文公文/报告文档（.docx/.doc）的生成与修改，通过 `win32com.client` (pywin32) 驱动真实 Word。
+**中文公文 Word COM 自动化技能** —— 专用于 Windows + Microsoft Word 的中文公文/报告文档（.docx/.doc）生成与修改，通过 `win32com.client` (pywin32) 驱动真实 Word。
 
-> ⚠️ **SCOPE: 本 skill 仅适用于 Windows + Microsoft Word + COM (win32com.client)，专用于中文文档（公文、报告、方案）。**
+> ⚠️ **适用范围：仅 Windows + Microsoft Word + COM (win32com.client)，专用于中文文档（公文、报告、方案）。**
 > ❌ 不适用于 Linux/macOS、WPS Office、Excel/PowerPoint、python-docx 纯库路线、Microsoft Graph 云端 API。
-> 其他组合请勿使用本 skill。
 
-> 💡 **Token 成本说明：** SKILL.md 约 620 行 / ~18K tokens，命中时整份注入 agent 主上下文（1M 窗口下约占 1.8%）。references/ 和 scripts/ 按需加载，不常驻。若对 token 敏感，可用精简模式（见 SKILL.md「Token 优化」章节）或只按需查看 references。
+> 💡 **Token 成本：** SKILL.md 约 620 行 / ~18K tokens，命中时整份注入 agent 主上下文（1M 窗口下约占 1.8%）。references/ 和 scripts/ 按需加载，不常驻。若对 token 敏感，可用精简模式（见 SKILL.md「Token 优化」章节）。
 
-Designed for AI agents that edit real Chinese government documents (公文): Hermes, Claude Code, Codex, OpenClaw, Cursor, etc.
+为 AI agent（Hermes / Claude Code / Codex / OpenClaw / Cursor 等）提供中文公文处理能力：GB/T 9704-2012 格式、GB/T 7714 参考文献、上下角标语义判定、PDF 书签导出、公文字体自动安装、防弹窗卡死等。
 
-## Why COM?
+## 为什么用 COM？
 
-Pure-library approaches (python-docx) flatten or lose complex structure:
-merged tables, styles, outline levels, headers/footers, fields, images anchored in paragraphs.
-The COM interface drives the real Word application and preserves everything — this skill is
-built for that path.
+纯库（python-docx）会丢失或扁平化复杂结构：合并表格、样式、大纲级别、页眉页脚、域、图片锚点。COM 驱动真实 Word 应用，保留一切——本技能即为此设计。
 
-## Contents
+## 目录结构
 
-- `SKILL.md` — the skill itself (golden rules, Word core patterns, find/replace danger zone, styles & outline, fonts & substitution, GB/T 9704-2012 公文格式, alignment & table cell defaults, GB/T 7714 references, superscript/subscript semantics, table surgery & auto-fit, page numbers, PDF export with heading bookmarks, dialog-hang prevention, dispatch selection, health checks, budget cascades)
-- `references/win32com-cheatsheet.md` — verified working snippets for Word (safe bulk replace, style constants, table column add/delete, merged-cell reads, image insert/resize, fonts, PDF export, page numbers, references, superscript/subscript)
-- `references/pitfalls.md` — real incident transcripts (infinite TOC duplication, stale-process corruption, long-string Find error, image-container paragraph loss, style off-by-one, LLM-generation pitfalls A1-A10, file-corruption pitfalls B1-B3)
-- `scripts/ensure_fonts.py` — 检测本机是否缺少公文字体（仿宋_GB2312/楷体_GB2312/方正小标宋简体等），缺失则自动下载安装（用户级，无需管理员）
+- `SKILL.md` — 技能主体（Golden Rules、Word 核心模式、查找替换、样式大纲、字体与替换、GB/T 9704-2012 公文格式、对齐与表格默认、GB/T 7714 参考文献、上下角标语义、表格手术与自适应、页码、PDF 书签导出、防弹窗卡死、Dispatch 选型、健康检查、预算级联）
+- `references/win32com-cheatsheet.md` — 已验证可运行的 Word 代码片段（安全批量替换、样式常量、表格列增删、合并单元格读取、图片插入/缩放、字体、PDF 导出、页码、参考文献、上下角标）
+- `references/pitfalls.md` — 真实事故档案（无限目录复制、陈旧进程损坏、长字符串 Find 错误、图片容器段落丢失、样式 off-by-one、LLM 生成坑 A1-A10、文档损坏坑 B1-B3）
+- `scripts/ensure_fonts.py` — 检测本机是否缺少公文字体，缺失则自动下载安装（用户级，无需管理员；GitHub 源超时快速失败）
 
-## Install
+## 安装方式（各 Agent）
+
+### 方式一：Prompt 安装（最快，把下面这段发给你的 agent）
+
+> 请从 https://github.com/zergfff/word-com-chinese-skill 下载安装 `word-com-chinese-skill` 技能：
+> 1. 克隆或下载该仓库到你的 skills 目录（各 agent 的 skills 目录见下）；
+> 2. 把 `SKILL.md`、`README.md`、`references/`、`scripts/` 整个文件夹放入 skills 目录；
+> 3. 之后处理中文 Word 公文时自动加载此技能。
 
 ### Hermes Agent
 
 ```bash
-# copy into a profile's skills dir
+# 复制到当前 profile 的 skills 目录（productivity 分类）
 cp -r word-com-chinese-skill ~/AppData/Local/hermes/profiles/<profile>/skills/productivity/word-com-chinese-skill
-# or use the skills hub / curator
+# 或直接用 hermes skills install（若配置了 skills hub）
 ```
 
 ### Claude Code
 
 ```bash
 mkdir -p ~/.claude/skills && cp -r word-com-chinese-skill ~/.claude/skills/
+# 或
+npx skills add zergfff/word-com-chinese-skill
 ```
 
 ### Codex (OpenAI)
@@ -46,18 +51,18 @@ mkdir -p ~/.claude/skills && cp -r word-com-chinese-skill ~/.claude/skills/
 mkdir -p ~/.codex/skills && cp -r word-com-chinese-skill ~/.codex/skills/
 ```
 
-### OpenClaw / Cursor / others
+### OpenClaw / Cursor / 其他
 
-Any agent that supports Anthropic-style SKILL.md with YAML frontmatter (`name`, `description`).
-Copy the folder into the agent's skills directory.
+任何支持 Anthropic 风格 SKILL.md（YAML frontmatter：`name` / `description`）的 agent：
+把整个文件夹复制到该 agent 的 skills 目录即可。
 
-## Requirements
+## 环境要求
 
-- **Windows 11 + Microsoft Word 2024 (LTSC)** — primary target; works on Word 2016+ (COM object model stable across these versions)
-- Microsoft Word installed
-- Python with pywin32: `pip install pywin32`
+- **Windows 11 + Microsoft Word 2024 (LTSC)** — 首选；Word 2016+ 均可（Word COM 对象模型稳定）
+- 已安装 Microsoft Word
+- Python + pywin32：`pip install pywin32`
 
-## Feature Map
+## 功能一览
 
 | 模块 | 能力 |
 |---|---|
