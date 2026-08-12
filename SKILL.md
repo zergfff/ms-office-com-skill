@@ -191,6 +191,24 @@ w.SubstituteFont('楷体_GB2312', '楷体')
 - 这种替换只影响显示/打印/导出 PDF 的观感，**不修改文档中保存的字体名**；导 PDF 前若担心生僻字观感，先调用 SubstituteFont 设置好回退映射。
 - 生僻字检测：若需确认某字在某字体中是否有字形，可在脚本里用 PIL/fontTools 查字体 cmap，或直接接受 Word 的回退行为（公文常见做法）。
 
+## Font auto-install — 缺失公文字体自动下载安装 (scripts/ensure_fonts.py)
+
+**Rule: 生成/修改公文需要用到公文字体（仿宋_GB2312、楷体_GB2312、方正小标宋简体、方正楷体_GBK、黑体等）但本机未安装时，运行 `scripts/ensure_fonts.py` 自动检测缺失 → 下载 → 安装（用户级，无需管理员）。**
+
+```bash
+python scripts/ensure_fonts.py          # 检测 + 下载安装所有缺失的公文字体
+python scripts/ensure_fonts.py --check  # 只检测，报告缺失（exit 1=有缺失）
+python scripts/ensure_fonts.py --font 黑体   # 只安装指定字体
+```
+
+**下载保护（重要）**：字体源是 GitHub 公开仓库，**国内访问 GitHub 常被屏蔽/限速**。脚本对 GitHub 源采用"快速失败"策略：
+- 连接超时默认 10s、总下载限时默认 30s，**超时即跳过该源不傻等**（实测无代理时 30s 快速失败，不会无限挂起）。
+- 环境变量覆盖：`FONT_DL_CONNECT_TIMEOUT` / `FONT_DL_TOTAL_TIMEOUT`。
+- **若全部 GitHub 源失败**：先设代理再重试（本机 v2rayN：`set HTTPS_PROXY=http://127.0.0.1:10808`），或手动从单位字体库/方正官网获取字体复制到 `C:\Windows\Fonts`。
+- 安装后**已打开的 Word 需重启**才能看到新字体。
+
+**实测（2026-08, 本机）**：无代理时 GitHub 源 30s 快速失败；设代理 `HTTPS_PROXY=http://127.0.0.1:10808` 后成功下载 7.4MB 仿宋_GB2312，TTF 魔数正确；用户级安装（复制到 `%LOCALAPPDATA%\Microsoft\Windows\Fonts` + HKCU 注册表 + AddFontResource + WM_FONTCHANGE）无需管理员。
+
 ## GB/T 9704-2012 公文格式速查 (Chinese government documents)
 
 | 元素 | 字体 | 字号/其他 |

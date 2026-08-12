@@ -14,6 +14,9 @@ ensure_fonts.py — 检测本机是否缺少公文字体，缺失则自动下载
 下载源（GitHub 公开仓库，仅用于公文字体学习/办公场景）:
     - guorenxi/MacFonts     (仿宋_GB2312, 楷体_GB2312, 方正小标宋简体, 方正小标宋_GBK)
     - Mackerly/fonts        (仿宋_GB2312, 方正仿宋, 方正小标宋_GBK, 方正楷体简体, 黑体)
+    注意: 国内访问 GitHub 常被屏蔽/限速。本脚本对 GitHub 源采用"快速失败"策略:
+    连接超时 10s / 总下载限时 30s（可用 FONT_DL_CONNECT_TIMEOUT / FONT_DL_TOTAL_TIMEOUT 环境变量
+    覆盖），超时即跳过该源不傻等；全部失败时提示设置代理后重试。
 
 安装方式: 复制到 %LOCALAPPDATA%\\Microsoft\\Windows\\Fonts + HKCU 注册表 + AddFontResource +
 广播 WM_FONTCHANGE。用户级安装，无需管理员权限；Word/Excel/PowerPoint 重启后生效。
@@ -90,17 +93,38 @@ def is_installed(font_name, fonts):
     return any(fn in f.lower() for f in fonts)
 
 
+# 下载保护参数（国内 GitHub 常被屏蔽/限速，超时即放弃该源，不傻等）
+# 可通过环境变量覆盖：FONT_DL_CONNECT_TIMEOUT（连接超时秒，默认 10）、FONT_DL_TOTAL_TIMEOUT（总下载限时秒，默认 30）
+CONNECT_TIMEOUT = float(os.environ.get("FONT_DL_CONNECT_TIMEOUT", "10"))
+TOTAL_TIMEOUT = float(os.environ.get("FONT_DL_TOTAL_TIMEOUT", "30"))
+
+
 def download(url, dest_dir):
-    """下载字体文件，返回本地路径；失败返回 None"""
+    """下载字体文件，返回本地路径；失败/超时返回 None。
+
+    如果来源是 GitHub（raw.githubusercontent.com / github.com）且连接超时或总下载
+    超过限时，直接放弃该源（国内经常屏蔽 GitHub，快速失败比长时间挂起好）。
+    """
+    import time
+    import urllib.parse
+
+    is_github = "github.com" in url or "raw.githubusercontent.com" in url
     fname = os.path.basename(url.split("?")[0])
     if "%" in fname:  # URL 编码的文件名
-        import urllib.parse
         fname = urllib.parse.unquote(fname)
     dest = os.path.join(dest_dir, fname)
+    start = time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
-            shutil.copyfileobj(r, f)
+        with urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT) as r, open(dest, "wb") as f:
+            while True:
+                chunk = r.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)
+                # 总下载限时：超时即放弃（GitHub 源国内限速时特别有用）
+                if time.time() - start > TOTAL_TIMEOUT:
+                    raise TimeoutError(f"下载超过 {TOTAL_TIMEOUT:.0f}s 限时")
         if os.path.getsize(dest) < 10000:  # TTF 至少几十 KB，太小视为错误页
             os.remove(dest)
             return None
@@ -111,7 +135,8 @@ def download(url, dest_dir):
                 os.remove(dest)
         except OSError:
             pass
-        print(f"  ! 下载失败 {url}: {e}")
+        tag = " [GitHub源超时/被墙，已跳过]" if is_github else ""
+        print(f"  ! 下载失败 {url}: {e}{tag}")
         return None
 
 
@@ -201,7 +226,9 @@ def main():
     if failed:
         print(f"失败: {failed}")
         print("提示: 这些字体可手动从 方正字库官网/单位字体库 获取后复制到 C:\\Windows\\Fonts。")
-    print("注意: 已打开的 Word/Excel/PowerPoint 需重启才能看到新字体。")
+        print("提示: 若因 GitHub 被墙/限速导致下载失败，可设置代理环境变量后重试，")
+        print("      如 set HTTPS_PROXY=http://127.0.0.1:10808 （或调整 FONT_DL_CONNECT_TIMEOUT/FONT_DL_TOTAL_TIMEOUT）。")
+    print("注意: 已打开的 Word 需重启才能看到新字体。")
     return 0 if not failed else 1
 
 

@@ -64,7 +64,7 @@ Copy the folder into the agent's skills directory.
 | **表格** | 表格手术（加列/删空列/合并单元格安全读写/尾部追加表）；AI 表格超页边距修复（AutoFitBehavior 窗口/内容）；表头重复 |
 | **交付** | 页脚页码（PAGE 域，小五 9pt Times New Roman）；PDF 导出（CreateBookmarks=1 按标题建书签，先刷新TOC/域）；目录自动刷新 |
 | **安全** | 防弹窗卡死（DispatchEx + DisplayAlerts + AutomationSecurity + is_locked + Open/Close 全参数 + 线程超时强杀）；崩溃恢复（taskkill）；每次编辑后健康检查；预算级联核对 |
-| **字体** | `scripts/ensure_fonts.py` 自动检测+下载安装缺失的公文字体（仿宋_GB2312/楷体_GB2312/方正小标宋简体/方正楷体_GBK/黑体等，用户级安装无需管理员） |
+| **字体** | `scripts/ensure_fonts.py` 自动检测+下载安装缺失的公文字体（仿宋_GB2312/楷体_GB2312/方正小标宋简体/方正楷体_GBK/黑体等，用户级安装无需管理员）；**GitHub 源快速失败策略（连接10s/总限时30s 超时即跳过，国内被墙不傻等；失败可设 HTTPS_PROXY 代理重试）** |
 
 ## License
 

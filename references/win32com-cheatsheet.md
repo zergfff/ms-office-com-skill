@@ -264,6 +264,19 @@ w.SubstituteFont('楷体_GB2312', '楷体')
 ```
 注意：`Document.FontSubstitutions` 集合在 win32com 下访问常报错，用 SubstituteFont 方法代替。生僻字检测可用 fontTools 查字体 cmap。
 
+## Word — 字体自动安装 (scripts/ensure_fonts.py, GitHub 源快速失败)
+
+**规则：生成/修改公文缺公文字体时自动下载安装。GitHub 源被墙/限速时快速失败，不傻等。**
+
+```bash
+python scripts/ensure_fonts.py          # 检测+下载安装缺失字体（用户级，无需管理员）
+python scripts/ensure_fonts.py --check  # 只检测
+FONT_DL_CONNECT_TIMEOUT=10 FONT_DL_TOTAL_TIMEOUT=30 python scripts/ensure_fonts.py  # 自定义超时
+```
+- GitHub 源连接超时 10s / 总限时 30s，超时即跳过（实测无代理 30s 快速失败）。
+- 失败后设代理重试：`set HTTPS_PROXY=http://127.0.0.1:10808`（本机 v2rayN，实测下载 7.4MB 成功）。
+- 安装后已打开的 Word 需重启。
+
 ## Word — 表格自动调整 (AI 表格超页边距修复)
 
 **规则：AI 生成的表格常超出页边距，修复顺序 = 表格布局 → 根据窗口自动调整 → 根据内容自动调整。**
