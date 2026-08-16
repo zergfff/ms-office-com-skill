@@ -1,7 +1,7 @@
 ---
 name: word-com-chinese-skill
 description: "Use when editing MS Word files (.docx/.doc) on Windows via the COM interface (win32com.client). Specialized for Chinese government documents (公文): GB/T 9704-2012 formatting (仿宋_GB2312 + Times New Roman fonts, alignment, tables, page numbers), GB/T 7714 references, semantic superscript/subscript, PDF export with heading bookmarks, auto font install, dialog-hang prevention, and the real pitfalls. ONLY valid for Windows + MS Word COM — NOT for Linux/macOS, WPS, Excel/PowerPoint, or pure-library (python-docx) approaches."
-version: 2.2.0
+version: 2.3.0
 author: zergfff
 license: MIT
 platforms: [windows]
@@ -308,7 +308,7 @@ f.save(tmp)
 
 1. **先分析模板**：打开模板文件（COM 只读打开），枚举每类段落：`Style.Name`、`Font.Name`/`NameFarEast`/`Size`/`Color`、`ParagraphFormat`（Alignment/FirstLineIndent/LineSpacingRule/LineSpacing/SpaceBefore/SpaceAfter）、编号（`Range.ListFormat.ListString` 看实际编号值，或看多级列表样式名）、表题段格式、表格 `Rows.Alignment`/单元格垂直对齐/底纹。
 2. **最可靠做法：直接基于模板新建文档**（`d = w.Documents.Add(模板路径)`）——样式、页面设置、默认字体、页边距、甚至自动编号列表全部继承，然后往里填内容、按模板段落样式套用。比"从空白文档逐项复刻"少 90% 偏差。
-3. **编号**：若模板编号是 Word 自动编号（多级列表）→ 在新文档里用相同列表样式（`ListFormat.ApplyListTemplateWithLevel` 或直接继承后逐段 `ListFormat.ApplyListTemplate`）；若模板编号是手动文字（如"1、""1.1"）→ 按同样格式逐段写入并连续递增，保证序号顺序正确。
+3. **编号**：优先用 Word 多级列表自动编号（见「Multilevel list 自动编号」章节——一、/（一）/1./（1）或 1、1.1、1.1.1 体系都能实现，编号自动递增/重置）：若模板编号是 Word 自动编号（多级列表）→ 基于模板新建继承，或重建同格式 ListTemplate；若模板编号是手动文字（如"1、""1.1"）→ 按同样格式逐段写入并连续递增，保证序号顺序正确。
 4. **生成后对照检查**：把模板与生成文档并排，逐项核对字体名/字号/颜色（遍历段落断言）、编号序列、表题与表格同页、页边距。有偏差立即修，不要等用户发现。
 
 > ⚠️ 下面的默认规则（GB/T 9704-2012 速查、对齐默认、表格默认、页码默认、参考文献默认等）**仅在未提供模板时生效**；提供模板时一律以模板为准，默认规则整体让位。
@@ -562,6 +562,49 @@ fr.ParagraphFormat.Alignment = 1                   # 居中（也可 0 左 / 2 �
 - 页脚内容会含 `\r` 结尾（`'1\r'`），读回验证时注意 strip。
 - 公文多节时每节分别设；正文节若要求"第 X 页 共 Y 页"，用两个域：`PAGE` + `NUMPAGES`（`'PAGE \\* MERGEFORMAT / NUMPAGES \\* MERGEFORMAT'` 形式或分开 Add）。
 - 导出 PDF 前先 `d.Fields.Update()` + `d.Repaginate()` 让页码正确。
+
+## Multilevel list 自动编号 — 公文层次序数（一、/1.1.1）用 Word 多级列表实现 (2026-08 实测)
+
+**Rule: 公文结构层次序数（一、/（一）/1./（1）四层，或用户指定的 1、1.1、1.1.1 数字体系）用 Word 多级列表（ListTemplate）实现自动编号，段落文字本身不含手动编号。** 实测 Office 2024：编号自动递增、上级变化自动重置、编号字体跟随段落字体（一层黑体、二层楷体、三四层仿宋，无需单独设编号字体）。
+
+### 三个关键点（全部实测踩坑）
+
+1. **NumberStyle 常量**：`39` = 中文小写计数（一、二、三）——**正确**；`38` = 中文大写（壹、贰）——**别用错**；`0` = 阿拉伯数字（1、2、3）。
+2. **NumberFormat 占位符 `%N` 引用「第 N 级」的编号值，不是本级**。本级编号写 `%N`（N=当前级别）；层级式编号（1.1.1）每级写 `%1.%2...%N`。
+3. **套用三步**：`d.ListTemplates.Add(True)` 建模板 → 对整段区域**一次** `ApplyListTemplate(lt, False, 1)` 开始新列表 → 逐段 `ListLevelNumber = level` 指定级别。**不要逐段 ApplyListTemplate**（每段会各自重新编号，全部变成第一级）。
+
+### 代码（两套体系实测可用）
+
+```python
+def make_list_template(d, specs):
+    lt = d.ListTemplates.Add(True)          # True = OutlineNumbered 多级
+    for idx, (style, fmt) in enumerate(specs, start=1):
+        lv = lt.ListLevels(idx)
+        lv.NumberStyle = style; lv.NumberFormat = fmt
+        lv.Alignment = 0; lv.NumberPosition = 0; lv.TextPosition = 0
+        lv.TrailingCharacter = 2            # wdTrailingNone：编号后不加 tab/空格
+        if idx > 1: lv.ResetOnHigher = True # 上级变化时本级重新从 1 开始
+    return lt
+
+# 体系 A（公文四层）：一、/（一）/1./（1）—— 39=中文小写, 0=Arabic
+ltA = make_list_template(d, [(39, '%1、'), (39, '（%2）'), (0, '%3.'), (0, '（%4）')])
+# 体系 B（数字层级）：1 / 1.1 / 1.1.1
+ltB = make_list_template(d, [(0, '%1'), (0, '%1.%2'), (0, '%1.%2.%3')])
+
+# 段落文字不含编号，按 lt 分组：每组整段区域一次应用，再逐段设级别
+rng = d.Range(d.Paragraphs(start).Range.Start, d.Paragraphs(end).Range.End)
+rng.ListFormat.ApplyListTemplate(ltA, False, 1)     # False = 开始新列表（不延续上一组）
+d.Paragraphs(i).Range.ListFormat.ListLevelNumber = 2   # 逐段指定级别
+d.Paragraphs(i).Range.Font.NameFarEast = '黑体'         # 编号字体跟随段落字体
+```
+
+### 注意事项
+
+- 段落文字**不能含手动编号**（"一、"/"1.1" 前缀要先删掉），否则编号重复变成"一、一、"。删除前缀用段落级替换（见 Find & Replace 章节）。
+- 编号字体跟随段落字体（PDF 实测：编号与标题文字同 span 同字体），**不需要**设 `ListLevel.Font`。
+- 验证：`para.Range.ListFormat.ListString` 返回实际编号文本（'一、'/'（一）'/'1.1'），`ListLevelNumber` 返回级别。**必须逐级验证**（Incident 22：只验证前两级会漏掉第三层"一."错误）。
+- 多组列表（如正文两组标题）：每组用 `ApplyListTemplate(lt, False, 1)` 重新开始，编号各自从 1 起。
+- 模板优先：用户模板是什么编号体系就建对应 ListTemplate；若模板本身带多级列表，直接基于模板新建文档继承（见「模板优先规则」）。
 
 ## COM Object Discovery (探索对象模型)
 

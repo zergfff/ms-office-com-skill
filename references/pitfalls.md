@@ -191,6 +191,18 @@ LLMs generate, which then lands in Word via COM):
 
 **教训：** ① rel_end 必须 ≤ len(needle)，偏移量基于 needle 自身索引；② 多段角标（酸根离子 SO42-/NO3-/PO43-）拆多次调用；③ 验证必须读与被验证属性一致的属性，target 统一 -1；④ 渲染层（PDF span 字号/bbox）是最终裁决，COM 自检只是中间层。
 
+## Incident 22: 多级列表 %N 占位符引用错级别 → 第三层变"一." (2026-08-16)
+
+**现象：** 用 Word 多级列表做公文四层编号（一、/（一）/1./（1）），第一、二层正确，第三、四层显示"一."/"（一）"而不是"1."/"（1）"。
+
+**根因链：**
+1. **`NumberFormat` 占位符 `%N` 引用的是「第 N 级」的编号值，不是本级**。Level3 写 `'%1.'` → %1 引用 Level1 的编号（中文样式 一、二）→ "一."；Level4 写 `'（%1）'` → "（一）"。Level2 的 `'（%1）'` 碰巧正确（Level1/2 都是中文计数），掩盖了问题。
+2. 另一个坑：NumberStyle 用 `38` 得到"壹、"（中文大写）；正确的中文小写计数（一、二、三）是 **39**。
+
+**修复：** 本级编号引用写 `%N`（N=当前级别）：Level2 `'（%2）'`、Level3 `'%3.'`、Level4 `'（%4）'`；层级式（1.1.1）每级写 `%1.%2...%N`（实测 `'%1'`/`'%1.%2'`/`'%1.%2.%3'`）。套用三步：`d.ListTemplates.Add(True)` 建模板 → 整段区域一次 `ApplyListTemplate(lt, False, 1)` → 逐段 `ListLevelNumber = level`（逐段 Apply 会全部变成第一级）。验证：遍历每段 `ListFormat.ListString` 断言编号序列。
+
+**教训：** ① `%N` = "第 N 级的编号值"；② 验证必须检查**每一级**的实际编号，不能只看前两级；③ NumberStyle 39=中文小写、38=中文大写；④ 编号字体跟随段落字体（PDF span 实测同字体），无需单独设 ListLevel.Font。
+
 ## User conventions for Chinese government proposal documents (公文)
 
 - **No source citations.** Reports written in a bureau's name must NOT carry "来源于官方网站/数据来源/网络检索" annotations or URLs — state facts directly. Remove `（…数据来源：…）` parentheticals entirely.

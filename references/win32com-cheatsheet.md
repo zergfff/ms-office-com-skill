@@ -369,6 +369,27 @@ for i in range(1, w.ProtectedViewWindows.Count + 1):
 # 5) 复杂脚本套线程超时兜底：threading.Thread + join(timeout) + taskkill /F /IM WINWORD.EXE
 ```
 
+## Word — 多级列表自动编号 (公文层次序数 / 1.1.1)
+
+**规则：公文层次序数（一、/（一）/1./（1）四层，或用户指定的 1、1.1、1.1.1）用 Word 多级列表自动编号，段落文字不含手动编号。** 实测 Office 2024：
+- **NumberStyle**：`39`=中文小写（一、二、三）；`38`=中文大写（壹贰叁，勿用）；`0`=Arabic（1、2、3）。
+- **NumberFormat 占位符 `%N` = 第 N 级编号值**（本级用 %N；层级式写 %1.%2...%N）。
+- **套用三步**：`d.ListTemplates.Add(True)` 建模板 → 整段区域一次 `ApplyListTemplate(lt, False, 1)` → 逐段 `ListLevelNumber = level`。
+- 编号字体跟随段落字体；验证 `ListFormat.ListString`（每级都要查）。
+
+```python
+lt = d.ListTemplates.Add(True)
+for idx, (style, fmt) in enumerate([(39,'%1、'),(39,'（%2）'),(0,'%3.'),(0,'（%4）')], start=1):
+    lv = lt.ListLevels(idx); lv.NumberStyle = style; lv.NumberFormat = fmt
+    lv.Alignment = 0; lv.NumberPosition = 0; lv.TextPosition = 0
+    lv.TrailingCharacter = 2                # wdTrailingNone：编号后不加 tab
+    if idx > 1: lv.ResetOnHigher = True     # 上级变化重新计数
+rng = d.Range(d.Paragraphs(1).Range.Start, d.Paragraphs(8).Range.End)
+rng.ListFormat.ApplyListTemplate(lt, False, 1)     # False=开始新列表
+d.Paragraphs(2).Range.ListFormat.ListLevelNumber = 2
+# 1.1.1 体系：[(0,'%1'),(0,'%1.%2'),(0,'%1.%2.%3')]
+```
+
 ## Word — 参考文献 (GB/T 7714-2015 顺序编码制)
 
 **规则：参考文献按 GB/T 7714-2015 顺序编码制，正文引用上标 [1][2]，文末按出现顺序编号。**
