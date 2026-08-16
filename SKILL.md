@@ -1,7 +1,7 @@
 ---
 name: word-com-chinese-skill
 description: "Use when editing MS Word files (.docx/.doc) on Windows via the COM interface (win32com.client). Specialized for Chinese government documents (公文): GB/T 9704-2012 formatting (仿宋_GB2312 + Times New Roman fonts, alignment, tables, page numbers), GB/T 7714 references, semantic superscript/subscript, PDF export with heading bookmarks, auto font install, dialog-hang prevention, and the real pitfalls. ONLY valid for Windows + MS Word COM — NOT for Linux/macOS, WPS, Excel/PowerPoint, or pure-library (python-docx) approaches."
-version: 2.3.0
+version: 2.4.0
 author: zergfff
 license: MIT
 platforms: [windows]
@@ -571,7 +571,7 @@ fr.ParagraphFormat.Alignment = 1                   # 居中（也可 0 左 / 2 �
 
 1. **NumberStyle 常量**：`39` = 中文小写计数（一、二、三）——**正确**；`38` = 中文大写（壹、贰）——**别用错**；`0` = 阿拉伯数字（1、2、3）。
 2. **NumberFormat 占位符 `%N` 引用「第 N 级」的编号值，不是本级**。本级编号写 `%N`（N=当前级别）；层级式编号（1.1.1）每级写 `%1.%2...%N`。
-3. **套用三步**：`d.ListTemplates.Add(True)` 建模板 → 对整段区域**一次** `ApplyListTemplate(lt, False, 1)` 开始新列表 → 逐段 `ListLevelNumber = level` 指定级别。**不要逐段 ApplyListTemplate**（每段会各自重新编号，全部变成第一级）。
+3. **套用三步**：`d.ListTemplates.Add(True)` 建模板 → 对整段区域**一次** `ApplyListTemplate(lt, False, 1)` 开始新列表 → 逐段 `ListLevelNumber = level` 指定级别。**不要逐段 ApplyListTemplate(..., False, ...)**（每段会各自重新编号，全部变成第一级）。**不连续标题（中间夹正文/表格）场景**：标题段落不连续时改为**逐段 `ApplyListTemplate(lt, i>0, 1)`**（第一段 False 开始新列表，后续 True 延续），实测编号依旧正确递增、按板块重置——非列表段落不影响列表计数。
 
 ### 代码（两套体系实测可用）
 
@@ -602,8 +602,10 @@ d.Paragraphs(i).Range.Font.NameFarEast = '黑体'         # 编号字体跟随�
 
 - 段落文字**不能含手动编号**（"一、"/"1.1" 前缀要先删掉），否则编号重复变成"一、一、"。删除前缀用段落级替换（见 Find & Replace 章节）。
 - 编号字体跟随段落字体（PDF 实测：编号与标题文字同 span 同字体），**不需要**设 `ListLevel.Font`。
-- 验证：`para.Range.ListFormat.ListString` 返回实际编号文本（'一、'/'（一）'/'1.1'），`ListLevelNumber` 返回级别。**必须逐级验证**（Incident 22：只验证前两级会漏掉第三层"一."错误）。
+- 验证：`para.Range.ListFormat.ListString` 返回实际编号文本（'一、'/'（一）'/'1.1'），`ListLevelNumber` 返回级别。**必须逐级验证**（Incident 22：只验证前两级会漏掉第三层"一."错误）。**⚠️ `ListLevelNumber` 对非列表段落默认返回 1，不可靠**——先判断 `ListString` 非空再分类（Incident 23，2026-08 长文档实测：442 段里非列表段落全部误报 level 1）。
 - 多组列表（如正文两组标题）：每组用 `ApplyListTemplate(lt, False, 1)` 重新开始，编号各自从 1 起。
+- **Heading 样式兼容**：`para.Style = -2/-3`（Heading1/2）后再套列表实测无冲突，PDF 书签（CreateBookmarks=1）自动含编号——书签名直接是"一、 总体要求"，层级一目了然（2026-08 长文档实测 18 书签全带编号）。
+- 标题段落**先剥离手动编号前缀**（"一、"/"（一）"）再套列表：`re.match(r'^([一二三四五六七八九十]+、|（[一二三四五六七八九十]+）)', para.Range.Text)` 匹配后 `d.Range(start, start+len(prefix)).Delete()`（只删字符不破坏段落结构）。
 - 模板优先：用户模板是什么编号体系就建对应 ListTemplate；若模板本身带多级列表，直接基于模板新建文档继承（见「模板优先规则」）。
 
 ## COM Object Discovery (探索对象模型)
