@@ -1,7 +1,7 @@
 ---
 name: word-com-chinese-skill
 description: "Use when editing MS Word files (.docx/.doc) on Windows via the COM interface (win32com.client). Specialized for Chinese government documents (公文): GB/T 9704-2012 formatting (仿宋_GB2312 + Times New Roman fonts, alignment, tables, page numbers), GB/T 7714 references, semantic superscript/subscript, PDF export with heading bookmarks, auto font install, dialog-hang prevention, and the real pitfalls. ONLY valid for Windows + MS Word COM — NOT for Linux/macOS, WPS, Excel/PowerPoint, or pure-library (python-docx) approaches."
-version: 2.0.0
+version: 2.1.0
 author: zergfff
 license: MIT
 platforms: [windows]
@@ -165,6 +165,7 @@ for para in d.Paragraphs:
 - `para.OutlineLevel`: 1–9 = heading levels, **10 = body text**.
 - Builtin style constants: **-1 = wdStyleNormal (正文), -2 = wdStyleHeading1, -3 = wdStyleHeading2, -4 = wdStyleHeading3**. Setting -2 gives Heading1, not Heading2 — classic off-by-one.
 - Fix body text wrongly tagged as heading: `para.Style = -1` (resets OutlineLevel to 10). Verify with `para.Style.NameLocal`.
+- **⚠️ Heading 样式自带颜色/西文字体**：`para.Style = -2/-3` 后段落会带 Heading 样式的颜色（深蓝）和字体。必须"先设 Style、再设直接格式"，且**显式 `rng.Font.Color = 0`（黑色）**——只覆盖 Name/NameFarEast/Size 不会改颜色（2026-08 实测："三、监测指标与方法"呈深蓝色，用户要求全文纯黑）。批量排版后遍历段落验证 `Font.Color == 0`。
 
 ## Fonts — 中文字体 vs 西文字体 (critical COM split)
 
@@ -197,6 +198,7 @@ w.SubstituteFont('楷体_GB2312', '楷体')
 ```
 
 - ✅ 实测：`Application.SubstituteFont` 在 Office 2024 (Word) 下正常；参数顺序 = (不可用字体, 替换字体)。
+- ⚠️ SubstituteFont 有前提（2026-08 实测）：需先有活动文档窗口（否则报"文档窗口处于非活动状态"）；目标字体名必须可解析（否则"命令失败"）。失败时改用 fontTools 改字体内部家族名 / fsType 的方案（见「Font embedding」章节）——那个方案能根治"字体存在但 Word 解析不到"的情况。
 - ❌ `Document.FontSubstitutions` 集合在 win32com 下访问常报错（`<unknown>.FontSubstitutions`）——不要依赖它，用 SubstituteFont 方法。
 - 这种替换只影响显示/打印/导出 PDF 的观感，**不修改文档中保存的字体名**；导 PDF 前若担心生僻字观感，先调用 SubstituteFont 设置好回退映射。
 - 生僻字检测：若需确认某字在某字体中是否有字形，可在脚本里用 PIL/fontTools 查字体 cmap，或直接接受 Word 的回退行为（公文常见做法）。
@@ -273,6 +275,27 @@ python scripts/ensure_fonts.py --font 黑体   # 只安装指定字体
 
 **实测（2026-08, 本机）**：无代理时 GitHub 源 30s 快速失败；设代理 `HTTPS_PROXY=http://127.0.0.1:10808` 后成功下载 7.4MB 仿宋_GB2312，TTF 魔数正确；用户级安装（复制到 `%LOCALAPPDATA%\Microsoft\Windows\Fonts` + HKCU 注册表 + AddFontResource + WM_FONTCHANGE）无需管理员。
 
+## Font embedding — fsType 受限嵌入导致 PDF 字形消失 (2026-08 实测)
+
+**事故：标题设"方正小标宋简体"后导出 PDF，标题中文字形全部消失（只剩西文 "XX"），字体也未内嵌——docx 里文字完好。** 排查链（全部实测）：
+
+1. **Word 按字体内部家族名匹配（DirectWrite），注册表显示名是摆设**。GitHub 镜像的 Mac 字体（MacFonts 等）内部家族名常是英文（如 `FZXiaoBiaoSong-B05S`），且 Windows 平台名字记录常缺 nameID 16（排版家族）——即使注册表值名是"方正小标宋简体"，Word 也解析不到。
+2. **fsType=2（Restricted 受限嵌入）的字体：Word 导出 PDF 时不是替换字体，而是整个丢弃字形**（文本消失、无替代字体）。实测 fsType=8（Preview & Print）的字体全部正常渲染内嵌。
+
+修复（fontTools，用户级，无需管理员）：
+```python
+from fontTools.ttLib import TTFont
+f = TTFont(path)
+name = f['name']
+name.setName('方正小标宋简体', 1, 3, 1, 0x0804)   # family
+name.setName('方正小标宋简体', 16, 3, 1, 0x0804)  # typographic family（DirectWrite 匹配用）
+f['OS/2'].fsType = 8                              # 受限嵌入 → 预览打印可嵌入
+f.save(tmp)
+# 用户级重装（文件可能被字体缓存锁定）：RemoveFontResourceW → os.replace → AddFontResourceW → WM_FONTCHANGE
+```
+
+诊断工具：`pymupdf.Font(fontfile=path).name` 看内部家族名；`TTFont(path)['OS/2'].fsType` 看嵌入许可；导出 PDF 后 `pymupdf page.get_fonts()` 确认字体真的内嵌且无 MicrosoftYaHei 子集。
+
 ## GB/T 9704-2012 公文格式速查 (Chinese government documents)
 
 | 元素 | 字体 | 字号/其他 |
@@ -320,7 +343,8 @@ t.Rows.Alignment = 1                                # wdRowAlignCenter（表格�
 - **首行缩进必须用 `CharacterUnitFirstLineIndent = 2`（按字符），不要用 `FirstLineIndent`（磅值）**——公文要求"2字符"，磅值会随字号漂移。
 - 标题/表题/图题清缩进时**同时清字符缩进和磅值缩进**（`CharacterUnitFirstLineIndent=0` + `FirstLineIndent=0`），否则旧文档残留磅值缩进会盖住居中效果。
 - 图片插入后，它所在段落默认可能带缩进或左对齐 → 显式设 `Alignment = 1` + 清缩进。
-- 表格默认靠左 → `t.Rows.Alignment = 1` 整体居中；表格内单元格对齐用 `t.Cell(r,c).VerticalAlignment`（1=上, 2=中, 3=下）和 `Range.ParagraphFormat.Alignment`（0/1/2/3）。
+- 表格默认靠左 → `t.Rows.Alignment = 1` 整体居中；表格内单元格对齐用 `t.Cell(r,c).VerticalAlignment`（**0=上, 1=居中, 3=下**——居中是 1 不是 2！旧示例"1=上,2=中"已修正）和 `Range.ParagraphFormat.Alignment`（0/1/2/3）。
+- **表题必须与表格同页**：表题段设 `表题_para.KeepWithNext = True`（"与下段同页"），否则表题孤立在页底、表格从下一页开始（2026-08 实测 12 表长文档；验证：表题段与表格首格的 `Range.Information(3)` 页码相等）。
 
 ### Table cell defaults — 表格内文字格式 (默认规则)
 
@@ -402,6 +426,18 @@ rng.Font.Superscript = False; rng.Font.Subscript = False   # 先清
 rng.Font.Superscript = True                                # 再设上标
 ```
 
+**⚠️ 顺序编码制编号必须按正文首次出现顺序（2026-08 实测事故）：** 先收集正文所有引用出现的先后顺序，再据此编号并生成文末列表；不要先排好列表再回头编号。实测错误示例：正文第一个引用是 [11]、第二个是 [12]，而 [1] 反而在中段——被用户当场抓包（"[11] 应该是 [1] 吧"）。验证：从正文按出现顺序提取 `[N]`，断言编号严格递增且与列表一一对应。
+
+**⚠️ 双数字引用 `[10]+` 的偏移量陷阱（2026-08 实测事故）：** `"[12]"` 是 **4 个字符**（`[ 1 2 ]`）。用 `apply_script` 处理引用上标时 rel_end 必须 = `len(needle)`，写死 3 会漏掉 `]`：
+
+```python
+for n in range(1, 13):
+    needle = f'[{n}]'
+    apply_script(d, needle, 0, len(needle), 'sup')   # [1]-[9] 是 3 字符，[10]-[12] 是 4 字符
+```
+
+**⚠️ 验证必须与生成用同一长度（2026-08 实测假阳性）：** 逐字符验证上标时同样用 `len(needle)` 遍历全部字符（含 `]`）。本次事故中验证脚本和生成脚本用了同一个 `range(3)`，共享盲区，输出"✓ 完整上标"假阳性——用户从 PDF 渲染里发现 `]` 是正常字号。**验证代码必须独立覆盖生成逻辑的边界，不能抄同一份偏移量。**
+
 ## Superscript / Subscript — 上下角标语义判定 (单位/化学式/离子)
 
 **Rule: 先判断文字意思，再决定上下标——不能机械把所有数字变角标。** 例如 "m3" 确定是立方米后 3 才作上标；"O2/CO2/NH3" 是化学式数字作下标；"Ca2+" 是离子 2+ 作上标。普通数字（2.0mg/L 中的 2.0、年份、编号）一律不动。
@@ -459,7 +495,7 @@ apply_script(d, 'CO2', 2, 3, 'sub')       # CO₂ 二氧化碳：2 下标
 
 ## Tables (Word)
 
-- Access any cell flat: `t.Range.Cells(i).Range.Text = 'x\r'` — works on merged tables where `t.Rows(r).Cells` raises.
+- Access any cell flat: `t.Range.Cells(i).Range.Text = 'x'` — works on merged tables where `t.Rows(r).Cells` raises. **⚠️ 不要加 `\r`**：`Cell.Range` 自带段落标记，`'x\r'` 会在格内多出一个空段落（2026-08 实测每个单元格多一个空行；cheatsheet 里 `cell.Range.Text = names[r-1]` 才是正确写法，此处旧示例已修正）。
 - **Add a column:** `t.Columns.Add(t.Columns(1))` then fill `t.Cell(r, 1).Range.Text` per row (header first). Verify `t.Columns.Count` went up.
 - **Delete a trailing column ONLY if every cell is empty:** inspect all `t.Columns(c).Cells`; headers/merged cells count as content.
 - **Append a table at end:** collapse range to end, `d.Tables.Add(r, rows, cols)`, `t.Borders.Enable = True`, fill `t.Cell(i,j).Range.Text`.

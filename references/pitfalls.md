@@ -155,6 +155,30 @@ LLMs generate, which then lands in Word via COM):
 
 单次 `AutoFitBehavior(1)`（窗口自适应）后列宽有时不合理。用户确认标准流程：**窗口→内容→窗口三连**（AutoFitBehavior(1)→(2)→(1)），三连后 PreferredWidthType=1（百分比整表占页面），效果最稳定。见 SKILL.md「Table auto-fit」。
 
+## Incident 15: 单元格文本多加 \r → 每格空行 (2026-08-16)
+
+`t.Cell(i,j).Range.Text = 'x\r'` 导致每个单元格多一个空段落。根因：`Cell.Range` 自带段落标记，追加 `\r` 等于再插一个空段。修复：直接 `= 'x'`。**SKILL.md 主文旧示例 `'x\r'` 与 cheatsheet `cell.Range.Text = names[r-1]` 互相矛盾——本事故就是照抄主文踩的坑，已统一为不带 \r。**
+
+## Incident 16: fsType=2 受限嵌入 → PDF 丢字形 (2026-08-16)
+
+标题"方正小标宋简体"在 PDF 中全部中文字形消失，只剩西文 "XX"；docx 文字完好、字体未内嵌。根因链：① GitHub 镜像 Mac 字体内部家族名是英文（`FZXiaoBiaoSong-B05S`）且 Windows 名字记录缺 nameID 16 → Word（DirectWrite）按内部名匹配解析不到，注册表显示名是摆设；② 即使能匹配，`OS/2.fsType=2`（Restricted 受限嵌入）→ Word 导出 PDF 直接丢弃字形而非替换。修复：fontTools 改中文家族名（补 nameID 16）+ fsType 2→8 + 用户级重装（RemoveFontResourceW→os.replace→AddFontResourceW→WM_FONTCHANGE）。详见 SKILL.md「Font embedding」。
+
+## Incident 17: 双数字引用 [10]+ 偏移量漏 ] (2026-08-16)
+
+`apply_script(d, '[12]', 0, 3, 'sup')` 只覆盖前 3 字符，`]` 落空——`"[12]"` 是 **4 字符**。单数字 `[1]`-`[9]`（3 字符）侥幸正确，双数字全错。**更隐蔽的是验证脚本用了同样的 `range(3)`，与生成代码共享盲区，输出"✓ 完整上标"假阳性**——用户在 PDF 渲染里发现 `]` 是正常字号。修复：生成与验证的偏移/长度一律用 `len(needle)`；教训 = **验证代码不能抄生成代码的同一份偏移量**。用户原话："两位数及以上很容易又出问题"——按长度/偏移处理文本的代码必须对 10+ 的编号做长度泛化。
+
+## Incident 18: Heading 样式颜色残留 → 标题深蓝 (2026-08-16)
+
+`para.Style = -2`（Heading1）后段落呈深蓝色——Heading 样式自带颜色/西文字体，生成脚本只覆盖了 Name/NameFarEast/Size，没覆盖颜色。修复：样式化后显式 `rng.Font.Color = 0`（黑色）。验证：遍历全部段落断言 `Font.Color == 0`（用户要求公文全文纯黑）。
+
+## Incident 19: 表题与表格分页 (2026-08-16)
+
+12 表长文档中部分表题孤立在页底、表格从下一页开始。修复：表题段 `KeepWithNext = True`（与下段同页）。验证：表题段 `Range.Information(3)`（wdActiveEndPageNumber）与表格首格页码相等。
+
+## Incident 20: GB/T 7714 顺序编号乱序 (2026-08-16)
+
+正文第一个引用是 [11]、第二个是 [12]，[1] 反而在中段——编号没按正文首次出现顺序。用户当场抓包（"[11] 应该是 [1] 吧"）。顺序编码制铁律：**先收集正文引用出现顺序，再据此编号并排列表**。验证：从正文按出现顺序提取 `[N]`，断言严格递增且与列表一一对应。
+
 ## User conventions for Chinese government proposal documents (公文)
 
 - **No source citations.** Reports written in a bureau's name must NOT carry "来源于官方网站/数据来源/网络检索" annotations or URLs — state facts directly. Remove `（…数据来源：…）` parentheticals entirely.

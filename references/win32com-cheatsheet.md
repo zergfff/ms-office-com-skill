@@ -75,6 +75,8 @@ if all(v == '' for v in vals):
     t.Columns(t.Columns.Count).Delete()
 ```
 
+**⚠️ 单元格写入不要加 `'\r'`**（2026-08 实测事故，见 pitfalls Incident 15）：`Cell.Range` 自带段落标记，`Text = 'x\r'` 会在格内多出一个空段落。直接 `Text = 'x'` 即可——上面所有示例都是对的，只有旧版 SKILL.md 主文 `'x\r'` 是错的（已修正）。
+
 ## Word — insert heading before a position
 
 ```python
@@ -229,7 +231,7 @@ shp.Range.ParagraphFormat.LineSpacingRule = 0     # 单倍行距
 
 # 表格：整表居中
 t.Rows.Alignment = 1                              # wdRowAlignCenter
-# 单元格垂直对齐：t.Cell(r,c).VerticalAlignment  (1=上 2=中 3=下)
+# 单元格垂直对齐：t.Cell(r,c).VerticalAlignment  (0=上 1=居中 3=下 —— 居中=1，不是 2)
 ```
 
 对齐常量：0=左, 1=中, 2=右, 3=两端, 4=分散。**缩进用 `CharacterUnitFirstLineIndent`（字符单位），不要用 `FirstLineIndent`（磅值，随字号漂移）。** 标题类段落（文章大标题/表题"表4-1 …"/图题"图1 …"）判定为居中类，正文判定为两端对齐+缩进类，批量排版逐段分类处理。
@@ -297,6 +299,7 @@ FONT_DL_CONNECT_TIMEOUT=10 FONT_DL_TOTAL_TIMEOUT=30 python scripts/ensure_fonts.
 - GitHub 源连接超时 10s / 总限时 30s，超时即跳过（实测无代理 30s 快速失败）。
 - 失败后设代理重试：`set HTTPS_PROXY=http://127.0.0.1:10808`（本机 v2rayN，实测下载 7.4MB 成功）。
 - 安装后已打开的 Word 需重启。
+- **⚠️ GitHub 镜像字体注意 fsType / 内部家族名**（2026-08 实测事故，Incident 16）：MacFonts 等镜像字体的内部家族名常是英文且 `OS/2.fsType=2`（受限嵌入）→ Word 解析不到 / 导出 PDF 丢字形。装完检查：`TTFont(path)['OS/2'].fsType` 应为 8 或 0、`pymupdf.Font(fontfile=path).name` 应为中文家族名；否则用 fontTools 改名 + fsType=8 重装（见 SKILL.md「Font embedding」）。
 
 ## Word — 表格自动调整 (AI 表格超页边距修复)
 
@@ -378,6 +381,14 @@ for i in range(1, w.ProtectedViewWindows.Count + 1):
 ```
 作者 >3 人：前3人+，等 / et al。正文引用：`[1]` 上标，合并 `[1-3]`。
 
+**⚠️ 上标偏移量（2026-08 实测事故，Incident 17）：** `"[12]"` 是 **4 字符**。用 `apply_script` 处理引用上标必须 `rel_end = len(needle)`，写死 3 会漏掉 `]`（单数字 [1]-[9] 是 3 字符侥幸正确，双数字全错）：
+```python
+for n in range(1, 13):
+    needle = f'[{n}]'
+    apply_script(d, needle, 0, len(needle), 'sup')
+```
+**编号必须按正文首次出现顺序**（顺序编码制，Incident 20）：先收集正文引用顺序再编号排列表。
+
 ## Word — 上下角标语义判定 (单位/化学式/离子)
 
 **规则：先判断文字意思再决定上下标，不机械处理。** 实测 Office 2024：
@@ -399,6 +410,7 @@ apply_script(d, 'NH3-N', 2, 3, 'sub')     # NH₃-N 氨氮
 apply_script(d, 'Ca2+', 2, 4, 'sup')      # Ca²⁺ 钙离子
 apply_script(d, 'CO2', 2, 3, 'sub')       # CO₂ 二氧化碳
 ```
+**⚠️ 变长 needle（如引用 `[10]`-`[12]`）：rel_end 必须 = `len(needle)`，不能按固定长度写死**（2026-08 实测事故，见 pitfalls Incident 17）。
 
 语义对照：m3/m2/hm2/km2（面积体积单位）→ 数字上标；O2/CO2/SO2/NH3/H2O/CH4（化学式）→ 数字下标；Ca2+/Mg2+/Na+/Fe3+/SO42-（离子）→ 数字+正负号上标；NH3-N → 3 下标、-N 不动；浓度数值（2.0mg/L）、年份、编号 → 一律不动。**必须先清再设**（Superscript=False + Subscript=False），COM 返回 -1 表示 True。先处理长模式（NH3-N、SO42-）再短模式（CO2、m3）。
 
