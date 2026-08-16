@@ -206,6 +206,8 @@ d.Styles(-1).Font.Name = 'Times New Roman'
 
 GB/T 9704-2012 速查：标题 方正小标宋简体 2号居中；一级标题 黑体 3号；二级标题 楷体_GB2312 3号；正文 仿宋_GB2312 3号两端对齐首行缩进2字符行距28磅；表头 黑体小四加粗浅灰底纹跨页重复；表内容 仿宋_GB2312 小四。
 
+**⚠️ 模板优先（2026-08 用户要求）：以上都是"无模板"时的默认。用户给了模板 → 样式/编号/字体/段落/表题/页面全部以模板为准（含编号体系如 1、1.1、1.1.1 自动编号，而不是默认的一、（一））。最可靠做法：`w.Documents.Add(模板路径)` 基于模板新建，继承样式与列表后填内容。**
+
 ## Word — 段落/图片/表格对齐 (排版默认规则)
 
 **规则：正文默认两端对齐 + 首行缩进2字符；图片和表格默认居中（无缩进）。**
@@ -409,10 +411,13 @@ apply_script(d, 'm3/d', 1, 2, 'sup')      # m³/d 立方米
 apply_script(d, 'NH3-N', 2, 3, 'sub')     # NH₃-N 氨氮
 apply_script(d, 'Ca2+', 2, 4, 'sup')      # Ca²⁺ 钙离子
 apply_script(d, 'CO2', 2, 3, 'sub')       # CO₂ 二氧化碳
+apply_script(d, 'SO42-', 2, 3, 'sub')     # SO₄²⁻ 硫酸根：4 下标（原子个数）
+apply_script(d, 'SO42-', 3, 5, 'sup')     # SO₄²⁻ 硫酸根：2- 上标（电荷）——酸根拆两段调用
 ```
 **⚠️ 变长 needle（如引用 `[10]`-`[12]`）：rel_end 必须 = `len(needle)`，不能按固定长度写死**（2026-08 实测事故，见 pitfalls Incident 17）。
+**⚠️ rel_end 不得越过 needle 末尾（Incident 21）：** 偏移量基于 needle 自身索引（`'SO42-'` = S0 O1 4-2 2-3 --4）。旧写法 `('SO42-', 4, 6, 'sup')` 漏掉 '4' 下标，且把 needle 之后字符（如括号 `)`）也变成上标。**验证 sub 必须读 `Font.Subscript`（不是 Superscript），target 统一 -1（Word True=-1）。**
 
-语义对照：m3/m2/hm2/km2（面积体积单位）→ 数字上标；O2/CO2/SO2/NH3/H2O/CH4（化学式）→ 数字下标；Ca2+/Mg2+/Na+/Fe3+/SO42-（离子）→ 数字+正负号上标；NH3-N → 3 下标、-N 不动；浓度数值（2.0mg/L）、年份、编号 → 一律不动。**必须先清再设**（Superscript=False + Subscript=False），COM 返回 -1 表示 True。先处理长模式（NH3-N、SO42-）再短模式（CO2、m3）。
+语义对照：m3/m2/hm2/km2（面积体积单位）→ 数字上标；O2/CO2/SO2/NH3/H2O/CH4（化学式）→ 数字下标；Ca2+/Mg2+/Na+/Fe3+/Cl-（简单离子）→ 数字+正负号上标；**SO42-/NO3-/PO43-（酸根离子）→ 原子个数数字下标 + 电荷数字与正负号上标**；NH3-N → 3 下标、-N 不动；浓度数值（2.0mg/L）、年份、编号 → 一律不动。**必须先清再设**（Superscript=False + Subscript=False），COM 返回 -1 表示 True。先处理长模式（NH3-N、SO42-）再短模式（CO2、m3）。
 
 ## Common cleanup (git-bash)
 

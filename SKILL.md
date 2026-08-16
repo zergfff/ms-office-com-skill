@@ -1,7 +1,7 @@
 ---
 name: word-com-chinese-skill
 description: "Use when editing MS Word files (.docx/.doc) on Windows via the COM interface (win32com.client). Specialized for Chinese government documents (公文): GB/T 9704-2012 formatting (仿宋_GB2312 + Times New Roman fonts, alignment, tables, page numbers), GB/T 7714 references, semantic superscript/subscript, PDF export with heading bookmarks, auto font install, dialog-hang prevention, and the real pitfalls. ONLY valid for Windows + MS Word COM — NOT for Linux/macOS, WPS, Excel/PowerPoint, or pure-library (python-docx) approaches."
-version: 2.1.0
+version: 2.2.0
 author: zergfff
 license: MIT
 platforms: [windows]
@@ -296,7 +296,26 @@ f.save(tmp)
 
 诊断工具：`pymupdf.Font(fontfile=path).name` 看内部家族名；`TTFont(path)['OS/2'].fsType` 看嵌入许可；导出 PDF 后 `pymupdf page.get_fonts()` 确认字体真的内嵌且无 MicrosoftYaHei 子集。
 
+## 模板优先规则 (Template-first) — 有模板用模板，无模板用默认
+
+**Rule: 用户提供了模板（样例文档）时，生成文档的样式、编号、字体、段落、表题等**一切**以模板为准，与模板完全一致；用户未提供模板时，才使用本技能下面的默认格式（GB/T 9704-2012 速查、对齐、表格、页码等默认规则）。**（2026-08 用户明确要求）
+
+- **无模板** → 默认格式：标题方正小标宋 2 号居中、一级标题黑体 3 号、二级标题楷体_GB2312 3 号、正文仿宋_GB2312 3 号两端对齐首行缩进 2 字符行距 28 磅；编号默认体系 **一、（一）**。
+- **有模板** → 逐项对齐模板：**样式（段落样式名/Heading 层级）、编号体系（含自动编号）、字体（Name/NameFarEast/字号/颜色）、段落（对齐/缩进/行距/段前段后）、表题（位置/字体/是否与表格同页）、表格（表头/边框/对齐/底纹）、页面（纸张/页边距/页码）**全部与模板一致。
+- **编号体系必须跟随模板**：例如模板用 `1、1.1、1.1.1`，则生成的也是 `1、1.1、1.1.1` 并按顺序自动编号递增，**而不是**默认的一、（一）。模板是几级就用几级，模板用什么分隔符（顿号/点）就用什么。
+
+### 操作流程（有模板时）
+
+1. **先分析模板**：打开模板文件（COM 只读打开），枚举每类段落：`Style.Name`、`Font.Name`/`NameFarEast`/`Size`/`Color`、`ParagraphFormat`（Alignment/FirstLineIndent/LineSpacingRule/LineSpacing/SpaceBefore/SpaceAfter）、编号（`Range.ListFormat.ListString` 看实际编号值，或看多级列表样式名）、表题段格式、表格 `Rows.Alignment`/单元格垂直对齐/底纹。
+2. **最可靠做法：直接基于模板新建文档**（`d = w.Documents.Add(模板路径)`）——样式、页面设置、默认字体、页边距、甚至自动编号列表全部继承，然后往里填内容、按模板段落样式套用。比"从空白文档逐项复刻"少 90% 偏差。
+3. **编号**：若模板编号是 Word 自动编号（多级列表）→ 在新文档里用相同列表样式（`ListFormat.ApplyListTemplateWithLevel` 或直接继承后逐段 `ListFormat.ApplyListTemplate`）；若模板编号是手动文字（如"1、""1.1"）→ 按同样格式逐段写入并连续递增，保证序号顺序正确。
+4. **生成后对照检查**：把模板与生成文档并排，逐项核对字体名/字号/颜色（遍历段落断言）、编号序列、表题与表格同页、页边距。有偏差立即修，不要等用户发现。
+
+> ⚠️ 下面的默认规则（GB/T 9704-2012 速查、对齐默认、表格默认、页码默认、参考文献默认等）**仅在未提供模板时生效**；提供模板时一律以模板为准，默认规则整体让位。
+
 ## GB/T 9704-2012 公文格式速查 (Chinese government documents)
+
+**（无模板时的默认格式；有模板见上方「模板优先规则」。）**
 
 | 元素 | 字体 | 字号/其他 |
 |---|---|---|
@@ -452,7 +471,8 @@ for n in range(1, 13):
 | O2 / CO2 / SO2 / NO2 / H2O / H2S | 化学式（分子） | 数字下标 → O₂ CO₂ SO₂ NO₂ H₂O H₂S |
 | NH3 / NH3-N | 氨/氨氮（化学式） | 3 下标 → NH₃ NH₃-N（-N 不上标不下标） |
 | CH4 / N2O / H2O2 | 甲烷/一氧化二氮/过氧化氢 | 数字下标 |
-| Ca2+ / Mg2+ / Na+ / Fe3+ / Cl- / SO42- | 离子（带电荷） | 数字和正负号上标 → Ca²⁺ Mg²⁺ Na⁺ Fe³⁺ Cl⁻ SO₄²⁻ |
+| Ca2+ / Mg2+ / Na+ / Fe3+ / Cl- | 离子（带电荷，正负号前数字=电荷数） | 数字和正负号上标 → Ca²⁺ Mg²⁺ Na⁺ Fe³⁺ Cl⁻ |
+| SO42- / NO3- / PO43- | 酸根离子（原子团） | **分两段**：原子个数数字**下标**（4/3），电荷数字+正负号**上标**（2- 3-）→ SO₄²⁻ NO₃⁻ PO₄³⁻ |
 | 5mg/L / 2.0mg/L / 0.5μg/L | 浓度数值 | **不动**（数字是数值不是角标） |
 | 2023年 / 第2期 / 编号123 | 年份/编号 | **不动** |
 
@@ -460,7 +480,8 @@ for n in range(1, 13):
 
 1. **单位**：`字母+数字` 且数字∈{2,3} 且整体是面积/体积单位词（m² m³ hm² km² cm² mm²）→ 数字上标。
 2. **化学式**：元素符号组合（含大写字母开头）+ 紧跟数字 → 数字下标（O₂ CO₂ NH₃ H₂O CH₄ N₂O）。
-3. **离子**：元素/原子团 + 数字+正负号（2+ 3+ - 2-）→ **数字和正负号都上标**（Ca²⁺ SO₄²⁻）；正负号前无数字（Na+ Cl-）→ 仅正负号上标。
+3. **离子（简单离子）**：元素 + 数字+正负号（2+ 3+）→ **数字和正负号都上标**（Ca²⁺ Fe³⁺）；正负号前无数字（Na+ Cl-）→ 仅正负号上标。
+3b. **酸根离子（原子团，SO42- / NO3- / PO43-）分两段**：**原子个数数字下标**（SO42- 的 4 → SO₄²⁻ 中 ₄ 是下标），**电荷数字+正负号上标**（2- → ²⁻ 上标）。一个 needle 需要**两次调用** apply_script。
 4. **氨氮 NH3-N**：NH₃ 部分数字下标，-N 正常（不上标不下标）。
 5. **数值/年份/编号**：上下文是数字、浓度、金额、日期、序号 → 一律不动。
 6. **歧义时**：如 "m3" 可能指立方米也可能指"3号监测点 m3"——按上下文判断，无法确定就不动。
@@ -481,15 +502,19 @@ def apply_script(doc, needle, rel_start, rel_end, kind):
         return True
     return False
 
-# 应用示例（每个模式调用一次）：
+# 应用示例（每个模式调用一次；SO42- 酸根需要两次调用）：
 apply_script(d, 'hm2', 2, 3, 'sup')       # hm² 公顷：2 上标
 apply_script(d, 'm3/d', 1, 2, 'sup')      # m³/d 立方米：3 上标
 apply_script(d, 'NH3-N', 2, 3, 'sub')     # NH₃-N 氨氮：3 下标
 apply_script(d, 'Ca2+', 2, 4, 'sup')      # Ca²⁺ 钙离子：2+ 上标
 apply_script(d, 'CO2', 2, 3, 'sub')       # CO₂ 二氧化碳：2 下标
+apply_script(d, 'SO42-', 2, 3, 'sub')     # SO₄²⁻ 硫酸根：4 下标（原子个数）
+apply_script(d, 'SO42-', 3, 5, 'sup')     # SO₄²⁻ 硫酸根：2- 上标（电荷）
 ```
 
 - **必须先清再设**：`rr.Font.Superscript = False; rr.Font.Subscript = False` 再设目标——否则残留角标格式会叠加。
+
+- **⚠️ rel_end 必须 ≤ len(needle)，不得越界（2026-08 实测事故）：** 偏移量基于 needle 自身索引（`'SO42-'` = S0 O1 4-2 2-3 --4）。旧写法 `('SO42-', 4, 6, 'sup')`：① 把 '4'（索引 2）漏掉没设下标；② rel_end=6 越过 needle 末尾，把 needle 之后的字符（括号 `)`）也包进上标范围——正文变成 `SO42-)` 的 `-)` 上标。**验证代码同样不得抄生成代码的同一份偏移量**：且 sub 检查必须读 `Font.Subscript`（不是 `Font.Superscript`），Word True 读回 -1（不是 0），sup/sub 的 target 都是 -1。
 - 实测返回值：`Superscript=True` 在 COM 返回 `-1`（True），`Subscript=True` 同理；验证时用 `int(rr.Font.Superscript)` 判断。
 - 批量处理时按"模式列表"循环（每个模式是一个 `(needle, rel_start, rel_end, kind)` 元组），先处理长模式（如 NH3-N、SO42-）再处理短模式（如 CO2、m3），避免子串误匹配。
 

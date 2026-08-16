@@ -179,6 +179,18 @@ LLMs generate, which then lands in Word via COM):
 
 正文第一个引用是 [11]、第二个是 [12]，[1] 反而在中段——编号没按正文首次出现顺序。用户当场抓包（"[11] 应该是 [1] 吧"）。顺序编码制铁律：**先收集正文引用出现顺序，再据此编号并排列表**。验证：从正文按出现顺序提取 `[N]`，断言严格递增且与列表一一对应。
 
+## Incident 21: 化学式多段角标偏移越界 → 波及后续字符 (SO42-, 2026-08-16)
+
+**现象：** 正文"硫酸盐（SO42-）"中 '4' 不是下标、'2-' 不是上标，末尾 ')' 反而变成上标。用户原话："'4'应该是下标'2-'应该是上标，最后的'）'是正常大小"。
+
+**根因链：**
+1. `'SO42-'` 是 5 字符（S0 O1 4-2 2-3 --4）：'4' 下标应在索引 2，'2-' 上标应在索引 3-4。旧代码写成 `("SO42-", 4, 6, "sup")`——从 '-' 开始（漏掉 '4' 下标和 '2' 上标），且 **rel_end=6 越过 needle 末尾**，`d.Range(base+4, base+6)` 把 needle 之后的 ')' 也包进上标范围。
+2. 验证函数照抄同一份偏移量（共享盲区，同 Incident 17），且 **sub 检查读的是 `Font.Superscript` 而不是 `Font.Subscript`**（对 sub 检查"不是上标"就误判为"是下标"），target 还用了 0（Word True 读回 -1）——三重盲区叠加导致"自检通过"。
+
+**修复：** 拆两段调用 `("SO42-", 2, 3, "sub")` + `("SO42-", 3, 5, "sup")`；验证按 kind 读对应属性（sup→Superscript、sub→Subscript），target=-1。PDF 渲染层独立确认：'4' → 10.56pt bbox 向下伸（下标）、'2-' → 10.56pt bbox 向上收（上标）、'）' → 15.96pt 正常。
+
+**教训：** ① rel_end 必须 ≤ len(needle)，偏移量基于 needle 自身索引；② 多段角标（酸根离子 SO42-/NO3-/PO43-）拆多次调用；③ 验证必须读与被验证属性一致的属性，target 统一 -1；④ 渲染层（PDF span 字号/bbox）是最终裁决，COM 自检只是中间层。
+
 ## User conventions for Chinese government proposal documents (公文)
 
 - **No source citations.** Reports written in a bureau's name must NOT carry "来源于官方网站/数据来源/网络检索" annotations or URLs — state facts directly. Remove `（…数据来源：…）` parentheticals entirely.
