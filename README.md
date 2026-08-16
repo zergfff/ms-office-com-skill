@@ -17,7 +17,7 @@
 
 - `SKILL.md` — 技能主体（Golden Rules、Word 核心模式、查找替换、样式大纲、字体与替换、Font embedding(fsType)、**模板优先规则（有模板用模板/无模板用默认）**、GB/T 9704-2012 公文格式、对齐与表格默认、GB/T 7714 参考文献、上下角标语义、表格手术与自适应、页码、**多级列表自动编号（一、/1.1.1）**、PDF 书签导出、防弹窗卡死、Dispatch 选型、健康检查、预算级联）
 - `references/win32com-cheatsheet.md` — 已验证可运行的 Word 代码片段（安全批量替换、样式常量、表格列增删、合并单元格读取、图片插入/缩放、字体、PDF 导出、页码、参考文献、上下角标）
-- `references/pitfalls.md` — 真实事故档案（无限目录复制、陈旧进程损坏、长字符串 Find 错误、图片容器段落丢失、样式 off-by-one、LLM 生成坑 A1-A10、文档损坏坑 B1-B3、Incident 15-22：单元格 \\r 空行 / fsType 丢字形 / 双数字引用偏移 / Heading 颜色 / 表题同页 / 引用顺序编号 / 化学式多段角标偏移越界 SO42- / **多级列表 %N 占位符引用错级别**）
+- `references/pitfalls.md` — 真实事故档案（无限目录复制、陈旧进程损坏、长字符串 Find 错误、图片容器段落丢失、样式 off-by-one、LLM 生成坑 A1-A10、文档损坏坑 B1-B3、Incident 15-23：单元格 \\r 空行 / fsType 丢字形 / 双数字引用偏移 / Heading 颜色 / 表题同页 / 引用顺序编号 / 化学式多段角标偏移越界 SO42- / **多级列表 %N 占位符引用错级别** / **ListLevelNumber 非列表段落默认返回 1**）
 - `scripts/ensure_fonts.py` — 检测本机是否缺少公文字体，缺失则自动下载安装（用户级，无需管理员；GitHub 源超时快速失败）
 
 ## 安装方式（各 Agent）
