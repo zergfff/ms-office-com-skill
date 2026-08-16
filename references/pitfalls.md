@@ -203,6 +203,23 @@ LLMs generate, which then lands in Word via COM):
 
 **教训：** ① `%N` = "第 N 级的编号值"；② 验证必须检查**每一级**的实际编号，不能只看前两级；③ NumberStyle 39=中文小写、38=中文大写；④ 编号字体跟随段落字体（PDF span 实测同字体），无需单独设 ListLevel.Font。
 
+## Incident 23: 多级列表验证陷阱 — ListLevelNumber 对非列表段落默认返回 1 (2026-08-16)
+
+**现象：** 长文档（442 段）验证多级列表编号时，一级标题检查出现大量空字符串——遍历所有段落按 `ListLevelNumber == 1` 收集，非列表段落（正文、表格）几乎全部误报 level 1。
+
+**根因：** `Paragraph.Range.ListFormat.ListLevelNumber` 对**未套列表的段落**返回默认值 `1`（不是 0/None）；只有 `ListString` 在非列表段落返回空字符串 `''`。直接拿 ListLevelNumber 分类会把所有正文段落当成一级标题。
+
+**修复：** 验证必须先判断 `ListString` 非空再按 `ListLevelNumber` 分类：
+```python
+ls = p.Range.ListFormat.ListString
+if not ls: continue              # 非列表段落：ListString 为空
+lv = int(p.Range.ListFormat.ListLevelNumber)
+if lv == 1: got_l1.append(ls)
+elif lv == 2: got_l2.append(ls)
+```
+
+**教训：** ① 验证多级列表用 ListString 非空过滤，ListLevelNumber 单独不可靠；② 长文档实测：不连续标题段落（中间夹正文/表格）逐段 `ApplyListTemplate(lt, i>0, 1)` 延续编号依然正确；③ Heading 样式 + 多级列表兼容，PDF 书签自动含编号（"一、 总体要求"）。
+
 ## User conventions for Chinese government proposal documents (公文)
 
 - **No source citations.** Reports written in a bureau's name must NOT carry "来源于官方网站/数据来源/网络检索" annotations or URLs — state facts directly. Remove `（…数据来源：…）` parentheticals entirely.
